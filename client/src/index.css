@@ -42,10 +42,10 @@ body {
 
 .sky {
   background:
-    radial-gradient(ellipse at 50% 120%, rgba(255,255,255,.85), transparent 46%),
-    radial-gradient(ellipse at 18% 10%, rgba(255,255,255,.55), transparent 32%),
-    radial-gradient(ellipse at 80% 0%, #9eb6ff, transparent 42%),
-    linear-gradient(180deg, #6d8cff 0%, #b7c6ff 42%, #e7eeff 72%, #f6f3ee 100%);
+    radial-gradient(ellipse at 50% 125%, rgba(186,205,255,.55), transparent 48%),
+    radial-gradient(ellipse at 18% 10%, rgba(255,255,255,.18), transparent 32%),
+    radial-gradient(ellipse at 80% 0%, #6f8dff, transparent 42%),
+    linear-gradient(180deg, #2c46c4 0%, #3d5fe0 38%, #5a7ced 68%, #7f9af2 100%);
   background-size: 140% 140%, 120% 120%, 120% 120%, 100% 100%;
   animation: sky-drift 22s ease-in-out infinite;
 }
@@ -53,6 +53,7 @@ body {
   0%, 100% { background-position: 0% 0%, 100% 0%, 50% 0%, 0 0; }
   50% { background-position: 12% 8%, 70% 16%, 40% 10%, 0 0; }
 }
+.sky-text { text-shadow: 0 1px 2px rgba(10, 20, 60, .45), 0 2px 12px rgba(10, 20, 60, .35); }
 .marquee-track { animation: marquee 28s linear infinite; }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) {

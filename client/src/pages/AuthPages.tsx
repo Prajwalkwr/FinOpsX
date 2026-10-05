@@ -43,13 +43,13 @@ export function LoginPage() {
       <section className="sky relative hidden overflow-hidden lg:block">
         <Spark />
         <div className="relative z-10 flex h-full flex-col justify-between p-10 text-white">
-          <Link to="/" className="font-semibold">FinOpsX</Link>
+          <Link to="/" className="sky-text font-semibold">FinOpsX</Link>
           <div>
-            <p className="text-xs uppercase tracking-[0.25em]">Financial operations intelligence</p>
-            <button className="mt-4 text-left font-display text-7xl uppercase leading-none" onClick={() => setWord((value) => (value + 1) % WORDS.length)}>{WORDS[word]}</button>
-            <p className="mt-4 max-w-md text-sm text-white/85">Monitor. Investigate. Understand.</p>
+            <p className="sky-text text-xs font-semibold uppercase tracking-[0.25em]">Financial operations intelligence</p>
+            <button className="sky-text mt-4 text-left font-display text-7xl uppercase leading-none" onClick={() => setWord((value) => (value + 1) % WORDS.length)}>{WORDS[word]}</button>
+            <p className="sky-text mt-4 max-w-md text-base font-medium">Monitor. Investigate. Understand.</p>
           </div>
-          <p className="text-xs text-white/75">Conceptual demonstration. Synthetic data only.</p>
+          <p className="sky-text text-sm font-medium">Conceptual demonstration. Synthetic data only.</p>
         </div>
       </section>
       <section className="flex items-center justify-center bg-canvas px-4 py-12">
