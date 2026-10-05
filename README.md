@@ -4,6 +4,8 @@ AI-powered financial operations and intelligence platform.
 
 **Monitor. Investigate. Understand.**
 
+**Live demo:** [finopsx.vercel.app](https://finopsx.vercel.app)
+
 FinOpsX is a conceptual fintech operations console inspired by studying publicly available information about modern fintech infrastructure and F1Soft's publicly described business domains. It is not an F1Soft product, it does not use real customer data, and it does not connect to private banking systems. Every institution, merchant, transaction, and metric in the app is synthetic.
 
 The public site uses a scroll-pinned sky motion: giant type, letter scatter, a moving gradient, and a particle field. It does not use photographic or 3D product images. The signed-in console is a dense operations workspace.
