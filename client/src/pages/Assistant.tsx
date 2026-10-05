@@ -46,14 +46,14 @@ export function AssistantPage() {
   })
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
-      <aside className="rounded-lg border border-line bg-card p-3">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="min-w-0 rounded-3xl border border-line bg-card p-3">
         <Button className="mb-3 w-full" onClick={async () => { const row = await api<{ id: string }>('/api/ai/conversations', { method: 'POST', body: JSON.stringify({ title: 'New conversation' }) }); setConversationId(row.id); setLast(null); conversations.refetch() }}>New conversation</Button>
         <ul className="space-y-1 text-sm">
           {conversations.data?.map((item) => <li key={item.id}><button className={`w-full rounded px-2 py-1 text-left ${item.id === conversationId ? 'bg-slate-100 dark:bg-white/10' : ''}`} onClick={() => { setConversationId(item.id); setLast(null) }}>{item.title}</button></li>)}
         </ul>
       </aside>
-      <section className="flex min-h-[70vh] flex-col rounded-lg border border-line bg-card">
+      <section className="flex min-h-[70vh] min-w-0 flex-col rounded-3xl border border-line bg-card">
         <header className="border-b border-line p-4">
           <h1 className="text-lg font-semibold">F1 AI Operations Assistant</h1>
           <p className="text-sm text-muted">Ask questions about your operational data.</p>
@@ -67,7 +67,7 @@ export function AssistantPage() {
           {last?.reportId ? <a className="text-sm text-blue-700" href="/reports">Report created. Open reports to download it.</a> : null}
         </div>
         <div className="border-t border-line p-3">
-          <div className="mb-2 flex gap-2 overflow-auto">{PROMPTS.map((prompt) => <button key={prompt} className="whitespace-nowrap rounded-full border border-line px-3 py-1 text-xs" onClick={() => send.mutate(prompt)}>{prompt}</button>)}</div>
+          <div className="mb-2 flex flex-wrap gap-2">{PROMPTS.map((prompt) => <button key={prompt} className="rounded-full border border-line px-3 py-1 text-xs" onClick={() => send.mutate(prompt)}>{prompt}</button>)}</div>
           <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); if (text.trim()) send.mutate(text.trim()) }}>
             <input className={inputClass} aria-label="Ask the assistant" value={text} onChange={(event) => setText(event.target.value)} placeholder="Which institution has the highest failure rate?" />
             <Button type="submit" disabled={send.isPending}>{send.isPending ? 'Asking…' : 'Ask'}</Button>
