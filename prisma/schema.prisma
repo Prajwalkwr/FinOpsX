@@ -1,0 +1,513 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+  DEACTIVATED
+}
+
+enum RoleName {
+  SUPER_ADMIN
+  OPERATIONS_MANAGER
+  ANALYST
+  ENGINEER
+  AUDITOR
+}
+
+enum TxStatus {
+  SUCCESS
+  FAILED
+  PENDING
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  QR
+  WALLET
+  BANK_TRANSFER
+  CARD
+  MOBILE_BANKING
+}
+
+enum FailureReason {
+  TIMEOUT
+  BANK_API_ERROR
+  INSUFFICIENT_FUNDS
+  NETWORK_ERROR
+  INVALID_REQUEST
+  SERVICE_UNAVAILABLE
+  DUPLICATE_TRANSACTION
+  AUTHENTICATION_FAILURE
+  SETTLEMENT_DELAY
+}
+
+enum SettlementStatus {
+  NOT_STARTED
+  QUEUED
+  SETTLED
+  DELAYED
+  FAILED
+}
+
+enum DeliveryState {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  IDENTIFIED
+  MITIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum AnomalyType {
+  HIGH_VALUE_SPIKE
+  TRANSACTION_VOLUME_SPIKE
+  REPEATED_FAILURE
+  API_LATENCY_ANOMALY
+  MERCHANT_ACTIVITY_ANOMALY
+  BANK_FAILURE_SPIKE
+  SETTLEMENT_DELAY
+  UNUSUAL_TIME_ACTIVITY
+}
+
+enum AnomalyStatus {
+  DETECTED
+  REVIEW
+  CONFIRMED
+  DISMISSED
+}
+
+enum ServiceStatus {
+  OPERATIONAL
+  DEGRADED
+  INCIDENT
+  MAINTENANCE
+}
+
+enum ReportType {
+  DAILY_OPERATIONS
+  TRANSACTION_SUMMARY
+  INSTITUTION_PERFORMANCE
+  INCIDENT_REPORT
+  ANOMALY_REPORT
+  SYSTEM_HEALTH
+}
+
+enum ReportCadence {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        RoleName @unique
+  description String
+  users       User[]
+}
+
+model User {
+  id               String     @id @default(cuid())
+  email            String     @unique
+  passwordHash     String
+  name             String
+  roleId           String
+  role             Role       @relation(fields: [roleId], references: [id])
+  status           UserStatus @default(ACTIVE)
+  failedLoginCount Int        @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  timezone         String     @default("Asia/Kathmandu")
+  theme            String     @default("system")
+  notifyIncidents  Boolean    @default(true)
+  notifyAnomalies  Boolean    @default(true)
+  notifyReports    Boolean    @default(true)
+  notifySecurity   Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  refreshTokens RefreshToken[]
+  passwordResets PasswordReset[]
+  notifications Notification[]
+  conversations AiConversation[]
+  auditLogs     AuditLog[]
+  assignedIncidents Incident[] @relation("Assignee")
+  reports       Report[]
+  reviewedAnomalies Anomaly[] @relation("AnomalyReviewer")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  replacedBy String?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Institution {
+  id           String        @id @default(cuid())
+  name         String
+  code         String        @unique
+  type         String
+  status       ServiceStatus @default(OPERATIONAL)
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+  incidents    IncidentInstitution[]
+  anomalies    Anomaly[]
+
+  @@index([status])
+}
+
+model Merchant {
+  id           String        @id @default(cuid())
+  name         String
+  code         String        @unique
+  category     String
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+  anomalies    Anomaly[]
+}
+
+model Transaction {
+  id                 String           @id @default(cuid())
+  transactionId      String           @unique
+  customerId         String
+  merchantId         String
+  merchant           Merchant         @relation(fields: [merchantId], references: [id])
+  institutionId      String
+  institution        Institution      @relation(fields: [institutionId], references: [id])
+  amount             Decimal          @db.Decimal(14, 2)
+  currency           String           @default("NPR")
+  paymentMethod      PaymentMethod
+  status             TxStatus
+  responseTimeMs     Int
+  riskScore          Int
+  failureReason      FailureReason?
+  settlementStatus   SettlementStatus @default(NOT_STARTED)
+  notificationStatus DeliveryState    @default(PENDING)
+  correlationId      String
+  apiEndpoint        String
+  suspicious         Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  events             TransactionEvent[]
+
+  @@index([transactionId])
+  @@index([createdAt])
+  @@index([status])
+  @@index([institutionId])
+  @@index([merchantId])
+  @@index([amount])
+  @@index([createdAt, status])
+  @@index([suspicious])
+}
+
+model TransactionEvent {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  service       String
+  event         String
+  status        String
+  createdAt     DateTime
+
+  @@index([transactionId, createdAt])
+}
+
+model Service {
+  id             String        @id @default(cuid())
+  key            String        @unique
+  name           String
+  status         ServiceStatus @default(OPERATIONAL)
+  responseTimeMs Int           @default(120)
+  uptime         Float         @default(99.99)
+  lastCheckedAt  DateTime      @default(now())
+  cpu            Float         @default(22)
+  memory         Float         @default(41)
+  simulated      Boolean       @default(true)
+  apiMetrics     ApiMetric[]
+  incidents      IncidentService[]
+}
+
+model ApiMetric {
+  id           String        @id @default(cuid())
+  serviceId    String
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  endpoint     String
+  method       String
+  status       ServiceStatus @default(OPERATIONAL)
+  latencyMs    Int
+  rpm          Int
+  errorRate    Float
+  p95Ms        Int
+  p99Ms        Int
+  availability Float
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([method, endpoint])
+}
+
+model SystemMetric {
+  id            String   @id @default(cuid())
+  recordedAt    DateTime @default(now())
+  cpu           Float
+  memory        Float
+  dbConnections Int
+  redisUp       Boolean
+  queueLength   Int
+  healthScore   Int
+  simulated     Boolean  @default(true)
+
+  @@index([recordedAt])
+}
+
+model Incident {
+  id                        String           @id @default(cuid())
+  publicId                  String           @unique
+  title                     String
+  description               String
+  severity                  IncidentSeverity
+  status                    IncidentStatus
+  incidentType              String
+  affectedTransactionCount  Int              @default(0)
+  rootCause                 String?
+  resolution                String?
+  aiSummary                 String?
+  detectedAt                DateTime
+  resolvedAt                DateTime?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  assigneeId                String?
+  assignee                  User?            @relation("Assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  events                    IncidentEvent[]
+  institutions              IncidentInstitution[]
+  services                  IncidentService[]
+  anomalies                 Anomaly[]
+
+  @@index([status])
+  @@index([incidentType])
+  @@index([createdAt])
+  @@index([severity])
+}
+
+model IncidentEvent {
+  id         String   @id @default(cuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  message    String
+  actorEmail String?
+  createdAt  DateTime @default(now())
+
+  @@index([incidentId, createdAt])
+}
+
+model IncidentInstitution {
+  incidentId    String
+  institutionId String
+  incident      Incident    @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@id([incidentId, institutionId])
+}
+
+model IncidentService {
+  incidentId String
+  serviceId  String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([incidentId, serviceId])
+}
+
+model Anomaly {
+  id            String           @id @default(cuid())
+  publicId      String           @unique
+  type          AnomalyType
+  severity      IncidentSeverity
+  status        AnomalyStatus    @default(DETECTED)
+  score         Float
+  title         String
+  description   String
+  method        String
+  institutionId String?
+  institution   Institution?     @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  merchantId    String?
+  merchant      Merchant?        @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  incidentId    String?
+  incident      Incident?        @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  evidence      Json?
+  decisionNote  String?
+  reviewedById  String?
+  reviewer      User?            @relation("AnomalyReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  detectedAt    DateTime         @default(now())
+  reviewedAt    DateTime?
+  createdAt     DateTime         @default(now())
+
+  @@index([status])
+  @@index([type])
+  @@index([detectedAt])
+}
+
+model Report {
+  id             String     @id @default(cuid())
+  type           ReportType
+  title          String
+  dateFrom       DateTime
+  dateTo         DateTime
+  payload        Json
+  deliveryStatus String     @default("GENERATED")
+  createdById    String?
+  createdBy      User?      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime   @default(now())
+
+  @@index([createdAt])
+  @@index([type])
+}
+
+model ReportSchedule {
+  id             String        @id @default(cuid())
+  cadence        ReportCadence @unique
+  enabled        Boolean       @default(false)
+  reportType     ReportType    @default(DAILY_OPERATIONS)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  deliveryStatus String        @default("EMAIL_DISABLED")
+  updatedAt      DateTime      @updatedAt
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorEmail    String
+  action        String
+  resource      String
+  resourceId    String?
+  ipAddress     String?
+  userAgent     String?
+  previousValue Json?
+  newValue      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([userId])
+  @@index([resource])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  severity  String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+}
+
+model AiConversation {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AiMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String
+  tool           String?
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model SimulatorConfig {
+  id                 String    @id @default("default")
+  running            Boolean   @default(false)
+  tpm                Int       @default(60)
+  successRate        Float     @default(0.94)
+  failureRate        Float     @default(0.04)
+  pendingRate        Float     @default(0.02)
+  highValueRate      Float     @default(0.01)
+  anomalyRate        Float     @default(0.01)
+  scenario           String?
+  scenarioIntensity  Float     @default(1)
+  scenarioStartedAt  DateTime?
+  updatedAt          DateTime  @updatedAt
+}
+
+model ThresholdConfig {
+  id                      String   @id @default("default")
+  highValueAmount         Int      @default(100000)
+  failureRatePct          Float    @default(5)
+  latencyMs               Int      @default(5000)
+  availabilityPct         Float    @default(95)
+  volumeAnomalyPct        Float    @default(80)
+  repeatedFailureCount    Int      @default(8)
+  dedupWindowMinutes      Int      @default(60)
+  rpmGate                 Int      @default(40)
+  consecutiveLatencyChecks Int     @default(5)
+  updatedAt               DateTime @updatedAt
+}
+
+model IdempotencyKey {
+  key       String   @id
+  method    String
+  path      String
+  status    Int
+  body      Json
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

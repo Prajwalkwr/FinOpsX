@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: #e7e9ee;
+  --card: #ffffff;
+  --text: #1b2437;
+  --muted: #8b93a7;
+  --border: #e7edf4;
+  --sidebar: #ffffff;
+  --good: #16a34a;
+  --warn: #ea8a2a;
+  --bad: #dc2626;
+  --info: #2f6bff;
+  --brand: #2f6bff;
+  --panel: #101a33;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #0e1218;
+  --card: #171d27;
+  --text: #e8eef6;
+  --muted: #93a0b4;
+  --border: #2a3344;
+  --sidebar: #171d27;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Suisse Intl", Suisse, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+#root { min-height: 100vh; }
+:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+.sky {
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(255,255,255,.85), transparent 46%),
+    radial-gradient(ellipse at 18% 10%, rgba(255,255,255,.55), transparent 32%),
+    radial-gradient(ellipse at 80% 0%, #9eb6ff, transparent 42%),
+    linear-gradient(180deg, #6d8cff 0%, #b7c6ff 42%, #e7eeff 72%, #f6f3ee 100%);
+  background-size: 140% 140%, 120% 120%, 120% 120%, 100% 100%;
+  animation: sky-drift 22s ease-in-out infinite;
+}
+@keyframes sky-drift {
+  0%, 100% { background-position: 0% 0%, 100% 0%, 50% 0%, 0 0; }
+  50% { background-position: 12% 8%, 70% 16%, 40% 10%, 0 0; }
+}
+.marquee-track { animation: marquee 28s linear infinite; }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .sky, .marquee-track { animation: none; }
+  html { scroll-behavior: auto; }
+}
+
+.table-wrap { overflow-x: auto; }
+.bg-brand { background-color: #2f6bff; }
+.text-brand { color: #2f6bff; }
+.bg-panel { background-color: #101a33; }
+.ring-brand { --tw-ring-color: #2f6bff; }
+button, a, input, select, textarea { font: inherit; }

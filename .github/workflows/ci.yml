@@ -1,0 +1,39 @@
+name: FinOpsX CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: finopsx
+          POSTGRES_PASSWORD: finopsx_demo
+          POSTGRES_DB: finopsx
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U finopsx -d finopsx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://finopsx:finopsx_demo@localhost:5432/finopsx
+      JWT_SECRET: ci-access-secret
+      JWT_REFRESH_SECRET: ci-refresh-secret
+      AI_PROVIDER: mock
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: npm run db:generate
+      - run: npx prisma migrate deploy
+      - run: npm test
+      - run: npm run build

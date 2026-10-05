@@ -1,0 +1,21 @@
+import { expect, test } from '@playwright/test'
+
+test('login through AI failure-rate answer', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('Email').fill('admin@finopsx.demo')
+  await page.getByLabel('Password').fill('Admin@12345')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('heading', { name: 'Operations dashboard' })).toBeVisible()
+  await page.getByRole('link', { name: 'Transactions' }).click()
+  await page.getByLabel('Search transactions').fill('TXN10000000')
+  await page.getByRole('link', { name: 'Open' }).first().click()
+  await expect(page.getByText('Timeline')).toBeVisible()
+  await page.getByRole('link', { name: 'Incidents' }).click()
+  await page.getByRole('link', { name: 'INC-2041' }).click()
+  await page.getByLabel('Change status').selectOption('INVESTIGATING')
+  await page.getByRole('link', { name: 'Audit logs' }).click()
+  await expect(page.getByText('UPDATED_INCIDENT').first()).toBeVisible()
+  await page.getByRole('link', { name: 'AI assistant' }).click()
+  await page.getByRole('button', { name: 'Which institution has the highest failure rate?' }).click()
+  await expect(page.getByText(/highest failure rate/i)).toBeVisible()
+})

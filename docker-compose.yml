@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: finopsx
+      POSTGRES_PASSWORD: finopsx_demo
+      POSTGRES_DB: finopsx
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finopsx -d finopsx"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://finopsx:finopsx_demo@postgres:5432/finopsx
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: docker-dev-access-secret-change-me
+      JWT_REFRESH_SECRET: docker-dev-refresh-secret-change-me
+      CLIENT_URL: http://localhost:8080
+      AI_PROVIDER: mock
+      SEED_TRANSACTION_COUNT: "20000"
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - server
+volumes:
+  pgdata:

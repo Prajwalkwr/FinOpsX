@@ -1,0 +1,16 @@
+node_modules
+dist
+.env
+.env.local
+data
+coverage
+playwright-report
+test-results
+blob-report
+*.log
+.DS_Store
+client/dist
+server/dist
+shared/dist
+.prisma
+*.tsbuildinfo

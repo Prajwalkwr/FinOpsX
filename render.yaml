@@ -1,0 +1,36 @@
+databases:
+  - name: finopsx-db
+    plan: free
+    databaseName: finopsx
+    user: finopsx
+
+services:
+  - type: web
+    name: finopsx-api
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build -w @finopsx/shared && npm run build -w server && npm run build:seed
+    startCommand: npx prisma migrate deploy && node server/dist/seed.js && node server/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finopsx-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: AI_PROVIDER
+        value: mock
+      - key: ALLOW_DEMO_SEED
+        value: "true"
+      - key: SHOW_DEMO_ACCOUNTS
+        value: "true"
+      - key: SEED_TRANSACTION_COUNT
+        value: "2000"
+      - key: CLIENT_URL
+        sync: false

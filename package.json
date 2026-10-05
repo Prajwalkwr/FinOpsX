@@ -1,0 +1,43 @@
+{
+  "name": "finopsx",
+  "private": true,
+  "version": "1.0.0",
+  "description": "FinOpsX — conceptual AI-powered financial operations and intelligence platform using synthetic data.",
+  "workspaces": [
+    "client",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @finopsx/shared && concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w @finopsx/shared && npm run build -w server && npm run build -w client && npm run build:seed",
+    "build:seed": "esbuild prisma/seed.ts --bundle --platform=node --format=esm --packages=external --outfile=server/dist/seed.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:embedded": "node scripts/embedded-postgres.mjs",
+    "test": "npm run build -w @finopsx/shared && npm run test -w server && npm run test -w client",
+    "test:e2e": "playwright test",
+    "lint": "tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.6.0",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "@types/bcryptjs": "^2.4.6",
+    "concurrently": "^9.1.2",
+    "dotenv": "^16.4.7",
+    "embedded-postgres": "16.14.0-beta.17",
+    "esbuild": "^0.25.1",
+    "prisma": "^6.6.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma",
+    "seed": "tsx prisma/seed.ts"
+  }
+}
