@@ -184,7 +184,7 @@ export function AppShell() {
               ) : null}
             </div>
           </div>
-          <main className="min-w-0 flex-1 px-4 py-4 md:px-6 md:py-5"><Outlet /></main>
+          <main className={`min-w-0 flex-1 px-4 pb-4 md:px-6 md:pb-5 ${location.pathname === '/dashboard' ? 'pt-[4.5rem] md:pt-5' : 'pt-[4.5rem] md:pt-20'}`}><Outlet /></main>
           <footer className="px-6 pb-5 text-xs text-muted">Conceptual fintech operations platform using synthetic demonstration data. Times shown in {user.timezone}.</footer>
         </div>
       </div>
