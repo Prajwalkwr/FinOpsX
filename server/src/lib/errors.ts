@@ -30,3 +30,7 @@ export function notFound(message = 'Resource not found.') {
 export function conflict(message: string) {
   return new AppError(409, 'CONFLICT', message)
 }
+
+export function unprocessable(message: string, details?: unknown) {
+  return new AppError(422, 'UNPROCESSABLE', message, details)
+}

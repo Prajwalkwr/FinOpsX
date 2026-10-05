@@ -27,6 +27,7 @@ app.use(cors({
     callback(new Error('Origin is not allowed.'))
   },
   credentials: true,
+  exposedHeaders: ['Content-Disposition', 'X-Request-Id', 'Retry-After'],
 }))
 app.use(express.json({ limit: '1mb' }))
 app.use(requestContext)

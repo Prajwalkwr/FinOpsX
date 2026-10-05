@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { DEMO_LABELS } from '@finopsx/shared'
 import { Spark } from '../components/ui'
 import { useAuth } from '../contexts'
 
@@ -115,7 +116,7 @@ export function LandingPage() {
           <h2 className="mt-3 font-display text-5xl uppercase leading-none text-[#0b1220] md:text-7xl">Taste the signal, not the noise.</h2>
         </div>
         <div className="space-y-4 text-base leading-7 text-[#1e293b]">
-          <p>FinOpsX is an internal operations console: live synthetic transactions, service health, incidents, anomalies, and an assistant that answers from the database.</p>
+          <p>FinOpsX is a demo operations console: live synthetic transactions, service health, incidents, anomalies, reconciliation, and an assistant that answers from the database.</p>
           <p>This is not an official F1Soft product and it does not connect to private banking systems. Every institution, merchant, and transaction is fictional.</p>
           <p className="font-medium">Monitor. Investigate. Understand.</p>
         </div>
@@ -139,8 +140,9 @@ export function LandingPage() {
           </article>
         ))}
       </section>
-      <footer className="px-4 py-8 text-center text-sm text-[#475569]">
-        Conceptual fintech operations platform using synthetic demonstration data.
+      <footer className="space-y-1 px-4 py-8 text-center text-sm text-[#475569]">
+        <p className="font-semibold text-[#1e293b]">{DEMO_LABELS.environment} · {DEMO_LABELS.synthetic}</p>
+        <p>{DEMO_LABELS.disclaimer}</p>
       </footer>
     </div>
   )

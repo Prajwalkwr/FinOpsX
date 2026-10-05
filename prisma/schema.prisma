@@ -27,6 +27,10 @@ enum TxStatus {
   PENDING
   CANCELLED
   REFUNDED
+  INITIATED
+  PROCESSING
+  REVERSED
+  SETTLED
 }
 
 enum PaymentMethod {
@@ -34,7 +38,7 @@ enum PaymentMethod {
   WALLET
   BANK_TRANSFER
   CARD
-  MOBILE_BANKING
+  ACCOUNT_PAYMENT
 }
 
 enum FailureReason {
@@ -57,6 +61,14 @@ enum SettlementStatus {
   FAILED
 }
 
+enum SettlementBatchStatus {
+  PENDING
+  PROCESSING
+  SETTLED
+  DELAYED
+  FAILED
+}
+
 enum DeliveryState {
   PENDING
   SENT
@@ -72,23 +84,25 @@ enum IncidentSeverity {
 }
 
 enum IncidentStatus {
-  OPEN
+  DETECTED
   INVESTIGATING
   IDENTIFIED
   MITIGATING
   RESOLVED
-  CLOSED
+  POST_INCIDENT_REVIEW
+  ACKNOWLEDGED
 }
 
 enum AnomalyType {
   HIGH_VALUE_SPIKE
   TRANSACTION_VOLUME_SPIKE
   REPEATED_FAILURE
-  API_LATENCY_ANOMALY
-  MERCHANT_ACTIVITY_ANOMALY
-  BANK_FAILURE_SPIKE
+  API_LATENCY_SPIKE
+  MERCHANT_VOLUME_SPIKE
+  FAILURE_RATE_SPIKE
   SETTLEMENT_DELAY
   UNUSUAL_TIME_ACTIVITY
+  INSTITUTION_ACTIVITY
 }
 
 enum AnomalyStatus {
@@ -96,6 +110,7 @@ enum AnomalyStatus {
   REVIEW
   CONFIRMED
   DISMISSED
+  RESOLVED
 }
 
 enum ServiceStatus {
@@ -112,12 +127,59 @@ enum ReportType {
   INCIDENT_REPORT
   ANOMALY_REPORT
   SYSTEM_HEALTH
+  RECONCILIATION_REPORT
 }
 
 enum ReportCadence {
   DAILY
   WEEKLY
   MONTHLY
+}
+
+enum ReconStatus {
+  MATCHED
+  MISMATCH
+  INVESTIGATING
+  RESOLVED
+}
+
+enum ReconIssue {
+  MISSING_AT_INSTITUTION
+  MISSING_ON_PLATFORM
+  AMOUNT_MISMATCH
+  NOT_SETTLED
+}
+
+enum JobType {
+  EOD_SETTLEMENT
+  TRANSACTION_RECONCILIATION
+  DAILY_REPORT
+  DATA_VALIDATION
+  BACKUP_SIMULATION
+  SETTLEMENT_VALIDATION
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum DqType {
+  MISSING_MERCHANT_REFERENCE
+  DUPLICATE_CORRELATION_ID
+  INVALID_CUSTOMER_ID
+  MISSING_RESPONSE_CODE
+  MISSING_FAILURE_REASON
+  DELAYED_SETTLEMENT
+  MISSING_LEDGER_RECORD
+}
+
+enum DqStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
 }
 
 model Role {
@@ -128,46 +190,48 @@ model Role {
 }
 
 model User {
-  id               String     @id @default(cuid())
-  email            String     @unique
-  passwordHash     String
-  name             String
-  roleId           String
-  role             Role       @relation(fields: [roleId], references: [id])
-  status           UserStatus @default(ACTIVE)
-  failedLoginCount Int        @default(0)
-  lockedUntil      DateTime?
-  lastLoginAt      DateTime?
-  timezone         String     @default("Asia/Kathmandu")
-  theme            String     @default("system")
-  notifyIncidents  Boolean    @default(true)
-  notifyAnomalies  Boolean    @default(true)
-  notifyReports    Boolean    @default(true)
-  notifySecurity   Boolean    @default(true)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  id                String     @id @default(cuid())
+  email             String     @unique
+  passwordHash      String
+  name              String
+  roleId            String
+  role              Role       @relation(fields: [roleId], references: [id])
+  status            UserStatus @default(ACTIVE)
+  failedLoginCount  Int        @default(0)
+  lockedUntil       DateTime?
+  lastLoginAt       DateTime?
+  timezone          String     @default("Asia/Kathmandu")
+  theme             String     @default("system")
+  notifyIncidents   Boolean    @default(true)
+  notifyAnomalies   Boolean    @default(true)
+  notifyReports     Boolean    @default(true)
+  notifySecurity    Boolean    @default(true)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
-  refreshTokens RefreshToken[]
-  passwordResets PasswordReset[]
-  notifications Notification[]
-  conversations AiConversation[]
-  auditLogs     AuditLog[]
-  assignedIncidents Incident[] @relation("Assignee")
-  reports       Report[]
-  reviewedAnomalies Anomaly[] @relation("AnomalyReviewer")
+  refreshTokens     RefreshToken[]
+  passwordResets    PasswordReset[]
+  notifications     Notification[]
+  conversations     AiConversation[]
+  auditLogs         AuditLog[]
+  assignedIncidents Incident[]          @relation("Assignee")
+  reports           Report[]
+  reviewedAnomalies Anomaly[]           @relation("AnomalyReviewer")
+  aiQueries         AiQuery[]
+  reconciliations   ReconciliationRun[]
 }
 
 model RefreshToken {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String    @unique
-  expiresAt DateTime
-  revokedAt DateTime?
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
   replacedBy String?
-  userAgent String?
-  ipAddress String?
-  createdAt DateTime  @default(now())
+  userAgent  String?
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
 
   @@index([userId])
 }
@@ -183,15 +247,19 @@ model PasswordReset {
 }
 
 model Institution {
-  id           String        @id @default(cuid())
-  name         String
-  code         String        @unique
-  type         String
-  status       ServiceStatus @default(OPERATIONAL)
-  createdAt    DateTime      @default(now())
-  transactions Transaction[]
-  incidents    IncidentInstitution[]
-  anomalies    Anomaly[]
+  id                      String                   @id @default(cuid())
+  name                    String
+  code                    String                   @unique
+  type                    String
+  status                  ServiceStatus            @default(OPERATIONAL)
+  createdAt               DateTime                 @default(now())
+  transactions            Transaction[]
+  destinationTransactions Transaction[]            @relation("DestinationInstitution")
+  incidents               IncidentInstitution[]
+  anomalies               Anomaly[]
+  ledgerEntries           InstitutionLedgerEntry[]
+  settlements             Settlement[]
+  reconciliationRuns      ReconciliationRun[]
 
   @@index([status])
 }
@@ -207,37 +275,54 @@ model Merchant {
 }
 
 model Transaction {
-  id                 String           @id @default(cuid())
-  transactionId      String           @unique
-  customerId         String
-  merchantId         String
-  merchant           Merchant         @relation(fields: [merchantId], references: [id])
-  institutionId      String
-  institution        Institution      @relation(fields: [institutionId], references: [id])
-  amount             Decimal          @db.Decimal(14, 2)
-  currency           String           @default("NPR")
-  paymentMethod      PaymentMethod
-  status             TxStatus
-  responseTimeMs     Int
-  riskScore          Int
-  failureReason      FailureReason?
-  settlementStatus   SettlementStatus @default(NOT_STARTED)
-  notificationStatus DeliveryState    @default(PENDING)
-  correlationId      String
-  apiEndpoint        String
-  suspicious         Boolean          @default(false)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  events             TransactionEvent[]
+  id                       String                  @id @default(cuid())
+  transactionId            String                  @unique
+  customerId               String
+  merchantId               String
+  merchant                 Merchant                @relation(fields: [merchantId], references: [id])
+  merchantReference        String?
+  institutionId            String
+  institution              Institution             @relation(fields: [institutionId], references: [id])
+  destinationInstitutionId String?
+  destinationInstitution   Institution?            @relation("DestinationInstitution", fields: [destinationInstitutionId], references: [id])
+  amount                   Decimal                 @db.Decimal(14, 2)
+  currency                 String                  @default("NPR")
+  paymentMethod            PaymentMethod
+  serviceKey               String                  @default("payment-api")
+  status                   TxStatus
+  lifecycleStage           String                  @default("COMPLETED")
+  responseCode             String?
+  responseTimeMs           Int
+  riskScore                Int
+  failureReason            FailureReason?
+  settlementStatus         SettlementStatus        @default(NOT_STARTED)
+  settlementId             String?
+  settlement               Settlement?             @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+  notificationStatus       DeliveryState           @default(PENDING)
+  correlationId            String
+  apiEndpoint              String
+  suspicious               Boolean                 @default(false)
+  initiatedAt              DateTime?
+  authenticatedAt          DateTime?
+  processedAt              DateTime?
+  completedAt              DateTime?
+  settledAt                DateTime?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  events                   TransactionEvent[]
+  ledgerEntry              InstitutionLedgerEntry?
 
-  @@index([transactionId])
   @@index([createdAt])
   @@index([status])
   @@index([institutionId])
   @@index([merchantId])
   @@index([amount])
   @@index([createdAt, status])
+  @@index([institutionId, createdAt])
   @@index([suspicious])
+  @@index([correlationId])
+  @@index([settlementStatus])
+  @@index([settlementId])
 }
 
 model TransactionEvent {
@@ -252,75 +337,236 @@ model TransactionEvent {
   @@index([transactionId, createdAt])
 }
 
-model Service {
-  id             String        @id @default(cuid())
-  key            String        @unique
-  name           String
-  status         ServiceStatus @default(OPERATIONAL)
-  responseTimeMs Int           @default(120)
-  uptime         Float         @default(99.99)
-  lastCheckedAt  DateTime      @default(now())
-  cpu            Float         @default(22)
-  memory         Float         @default(41)
-  simulated      Boolean       @default(true)
-  apiMetrics     ApiMetric[]
-  incidents      IncidentService[]
+/// Simulated institution-side ledger. Reconciliation compares it against platform transactions and settlements.
+model InstitutionLedgerEntry {
+  id             String       @id @default(cuid())
+  institutionId  String
+  institution    Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  transactionRef String
+  transactionId  String?      @unique
+  transaction    Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  amount         Decimal      @db.Decimal(14, 2)
+  status         String
+  recordedAt     DateTime
+
+  @@index([institutionId, recordedAt])
+  @@index([recordedAt])
+  @@index([transactionRef])
 }
 
-model ApiMetric {
+model Settlement {
+  id               String                @id @default(cuid())
+  publicId         String                @unique
+  institutionId    String
+  institution      Institution           @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  status           SettlementBatchStatus @default(PENDING)
+  transactionCount Int
+  amount           Decimal               @db.Decimal(16, 2)
+  expectedAt       DateTime?
+  settledAt        DateTime?
+  jobId            String?
+  createdAt        DateTime              @default(now())
+  transactions     Transaction[]
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model ReconciliationRun {
+  id                   String               @id @default(cuid())
+  publicId             String               @unique
+  windowFrom           DateTime
+  windowTo             DateTime
+  institutionId        String?
+  institution          Institution?         @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  status               ReconStatus
+  expectedCount        Int
+  actualCount          Int
+  matchedCount         Int
+  unmatchedCount       Int
+  expectedAmount       Decimal              @db.Decimal(16, 2)
+  actualAmount         Decimal              @db.Decimal(16, 2)
+  difference           Decimal              @db.Decimal(16, 2)
+  settledCount         Int                  @default(0)
+  settledAmount        Decimal              @default(0) @db.Decimal(16, 2)
+  settlementDifference Decimal              @default(0) @db.Decimal(16, 2)
+  notes                String?
+  createdById          String?
+  createdBy            User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  jobId                String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  items                ReconciliationItem[]
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model ReconciliationItem {
+  id                String            @id @default(cuid())
+  runId             String
+  run               ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  transactionRef    String
+  institutionId     String?
+  issue             ReconIssue
+  platformAmount    Decimal?          @db.Decimal(14, 2)
+  institutionAmount Decimal?          @db.Decimal(14, 2)
+  createdAt         DateTime          @default(now())
+
+  @@index([runId])
+}
+
+model OperationalJob {
+  id                String    @id @default(cuid())
+  publicId          String    @unique
+  type              JobType
+  status            JobStatus @default(QUEUED)
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  durationMs        Int?
+  recordsProcessed  Int       @default(0)
+  successfulRecords Int       @default(0)
+  failedRecords     Int       @default(0)
+  triggeredBy       String
+  output            Json?
+  error             String?
+  createdAt         DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([type, status])
+}
+
+model DataQualityIssue {
+  id            String    @id @default(cuid())
+  publicId      String    @unique
+  type          DqType    @unique
+  title         String
+  description   String
+  affectedCount Int       @default(0)
+  status        DqStatus  @default(OPEN)
+  note          String?
+  detectedAt    DateTime  @default(now())
+  lastCheckedAt DateTime  @default(now())
+  resolvedAt    DateTime?
+  updatedAt     DateTime  @updatedAt
+}
+
+model Service {
+  id             String              @id @default(cuid())
+  key            String              @unique
+  name           String
+  description    String?
+  layer          String?
+  status         ServiceStatus       @default(OPERATIONAL)
+  responseTimeMs Int                 @default(120)
+  errorRate      Float               @default(0)
+  uptime         Float               @default(99.99)
+  lastCheckedAt  DateTime            @default(now())
+  cpu            Float               @default(22)
+  memory         Float               @default(41)
+  simulated      Boolean             @default(true)
+  apiEndpoints   ApiEndpoint[]
+  incidents      IncidentService[]
+  dependsOn      ServiceDependency[] @relation("DependencyFrom")
+  dependents     ServiceDependency[] @relation("DependencyTo")
+}
+
+model ServiceDependency {
+  id            String  @id @default(cuid())
+  fromServiceId String
+  toServiceId   String
+  fromService   Service @relation("DependencyFrom", fields: [fromServiceId], references: [id], onDelete: Cascade)
+  toService     Service @relation("DependencyTo", fields: [toServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([fromServiceId, toServiceId])
+}
+
+/// Demo API endpoint registry. Aggregates are recomputed from ApiCall rows.
+model ApiEndpoint {
   id           String        @id @default(cuid())
   serviceId    String
   service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  name         String        @default("")
   endpoint     String
   method       String
   status       ServiceStatus @default(OPERATIONAL)
   latencyMs    Int
   rpm          Int
   errorRate    Float
+  p50Ms        Int           @default(0)
   p95Ms        Int
   p99Ms        Int
   availability Float
   updatedAt    DateTime      @updatedAt
+  calls        ApiCall[]
 
   @@unique([method, endpoint])
+  @@map("ApiMetric")
+}
+
+model ApiCall {
+  id             String      @id @default(cuid())
+  endpointId     String
+  endpoint       ApiEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  statusCode     Int
+  latencyMs      Int
+  institutionId  String?
+  transactionRef String?
+  createdAt      DateTime    @default(now())
+
+  @@index([endpointId, createdAt])
+  @@index([createdAt])
 }
 
 model SystemMetric {
-  id            String   @id @default(cuid())
-  recordedAt    DateTime @default(now())
-  cpu           Float
-  memory        Float
-  dbConnections Int
-  redisUp       Boolean
-  queueLength   Int
-  healthScore   Int
-  simulated     Boolean  @default(true)
+  id               String   @id @default(cuid())
+  recordedAt       DateTime @default(now())
+  cpu              Float
+  memory           Float
+  dbConnections    Int
+  redisUp          Boolean
+  queueLength      Int
+  healthScore      Int
+  storageMb        Float    @default(0)
+  slowQueries      Int      @default(0)
+  replicationLagMs Int      @default(0)
+  cacheUsagePct    Float    @default(0)
+  processMemoryMb  Float    @default(0)
+  eventLoopLagMs   Float    @default(0)
+  simulated        Boolean  @default(true)
 
   @@index([recordedAt])
 }
 
 model Incident {
-  id                        String           @id @default(cuid())
-  publicId                  String           @unique
-  title                     String
-  description               String
-  severity                  IncidentSeverity
-  status                    IncidentStatus
-  incidentType              String
-  affectedTransactionCount  Int              @default(0)
-  rootCause                 String?
-  resolution                String?
-  aiSummary                 String?
-  detectedAt                DateTime
-  resolvedAt                DateTime?
-  createdAt                 DateTime         @default(now())
-  updatedAt                 DateTime         @updatedAt
-  assigneeId                String?
-  assignee                  User?            @relation("Assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  events                    IncidentEvent[]
-  institutions              IncidentInstitution[]
-  services                  IncidentService[]
-  anomalies                 Anomaly[]
+  id                       String                @id @default(cuid())
+  publicId                 String                @unique
+  title                    String
+  description              String
+  severity                 IncidentSeverity
+  status                   IncidentStatus
+  incidentType             String
+  team                     String?
+  scenario                 String?
+  affectedTransactionCount Int                   @default(0)
+  rootCause                String?
+  rootCauseConfirmed       Boolean               @default(false)
+  resolution               String?
+  preventiveAction         String?
+  aiSummary                String?
+  rca                      Json?
+  reopenCount              Int                   @default(0)
+  detectedAt               DateTime
+  acknowledgedAt           DateTime?
+  resolvedAt               DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  assigneeId               String?
+  assignee                 User?                 @relation("Assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  events                   IncidentEvent[]
+  institutions             IncidentInstitution[]
+  services                 IncidentService[]
+  anomalies                Anomaly[]
 
   @@index([status])
   @@index([incidentType])
@@ -332,6 +578,7 @@ model IncidentEvent {
   id         String   @id @default(cuid())
   incidentId String
   incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  kind       String   @default("EVENT")
   message    String
   actorEmail String?
   createdAt  DateTime @default(now())
@@ -367,6 +614,10 @@ model Anomaly {
   title         String
   description   String
   method        String
+  entityType    String?
+  entityName    String?
+  normalValue   Float?
+  observedValue Float?
   institutionId String?
   institution   Institution?     @relation(fields: [institutionId], references: [id], onDelete: SetNull)
   merchantId    String?
@@ -379,6 +630,7 @@ model Anomaly {
   reviewer      User?            @relation("AnomalyReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   detectedAt    DateTime         @default(now())
   reviewedAt    DateTime?
+  resolvedAt    DateTime?
   createdAt     DateTime         @default(now())
 
   @@index([status])
@@ -467,38 +719,58 @@ model AiMessage {
   role           String
   content        String
   tool           String?
+  actions        Json?
   createdAt      DateTime       @default(now())
 
   @@index([conversationId, createdAt])
 }
 
+/// Log of every assistant and Ask Your Data request, including the structured query that was executed.
+model AiQuery {
+  id              String   @id @default(cuid())
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  kind            String
+  question        String
+  intent          String?
+  structuredQuery Json?
+  resultCount     Int?
+  status          String
+  durationMs      Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
 model SimulatorConfig {
-  id                 String    @id @default("default")
-  running            Boolean   @default(false)
-  tpm                Int       @default(60)
-  successRate        Float     @default(0.94)
-  failureRate        Float     @default(0.04)
-  pendingRate        Float     @default(0.02)
-  highValueRate      Float     @default(0.01)
-  anomalyRate        Float     @default(0.01)
-  scenario           String?
-  scenarioIntensity  Float     @default(1)
-  scenarioStartedAt  DateTime?
-  updatedAt          DateTime  @updatedAt
+  id                String    @id @default("default")
+  running           Boolean   @default(false)
+  tpm               Int       @default(60)
+  successRate       Float     @default(0.94)
+  failureRate       Float     @default(0.04)
+  pendingRate       Float     @default(0.02)
+  highValueRate     Float     @default(0.01)
+  anomalyRate       Float     @default(0.01)
+  averageAmount     Int       @default(3500)
+  scenario          String?
+  scenarioIntensity Float     @default(1)
+  scenarioStartedAt DateTime?
+  updatedAt         DateTime  @updatedAt
 }
 
 model ThresholdConfig {
-  id                      String   @id @default("default")
-  highValueAmount         Int      @default(100000)
-  failureRatePct          Float    @default(5)
-  latencyMs               Int      @default(5000)
-  availabilityPct         Float    @default(95)
-  volumeAnomalyPct        Float    @default(80)
-  repeatedFailureCount    Int      @default(8)
-  dedupWindowMinutes      Int      @default(60)
-  rpmGate                 Int      @default(40)
-  consecutiveLatencyChecks Int     @default(5)
-  updatedAt               DateTime @updatedAt
+  id                       String   @id @default("default")
+  highValueAmount          Int      @default(100000)
+  failureRatePct           Float    @default(5)
+  latencyMs                Int      @default(5000)
+  availabilityPct          Float    @default(95)
+  volumeAnomalyPct         Float    @default(80)
+  repeatedFailureCount     Int      @default(8)
+  dedupWindowMinutes       Int      @default(60)
+  rpmGate                  Int      @default(40)
+  consecutiveLatencyChecks Int      @default(5)
+  updatedAt                DateTime @updatedAt
 }
 
 model IdempotencyKey {

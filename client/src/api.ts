@@ -1,4 +1,18 @@
-export type ApiError = { code: string; message: string; status: number }
+export type ApiError = { code: string; message: string; status: number; details?: Array<{ path?: string; message: string }> }
+
+export function errorMessage(error: unknown) {
+  const err = error as Partial<ApiError> | null
+  if (!err) return 'Something went wrong.'
+  if (err.status === 429) return 'Too many requests. Wait a moment and try again.'
+  if (err.status && err.status >= 500) return err.message && err.message !== 'Request failed.' ? err.message : 'FinOpsX services hit an error. Try again shortly.'
+  const detail = err.details?.[0]
+  return detail && err.code === 'VALIDATION_ERROR' ? `${err.message} ${detail.path ? `${detail.path}: ` : ''}${detail.message}` : err.message ?? 'Something went wrong.'
+}
+
+/** A fresh key per user action; retries of the same request object reuse it. */
+export function idem(prefix: string) {
+  return { 'Idempotency-Key': `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }
+}
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 const REFRESH_KEY = 'finopsx.refresh'
@@ -79,16 +93,25 @@ export async function api<T>(path: string, options: RequestInit = {}, retry = tr
       code: body.error?.code ?? 'HTTP',
       message: body.error?.message ?? 'Request failed.',
       status: response.status,
+      details: body.error?.details,
     } satisfies ApiError
   }
   return body.data as T
 }
 
-export function download(path: string) {
+export function download(path: string, init: { method?: string; body?: unknown } = {}, retry = true): Promise<void> {
   const headers: Record<string, string> = {}
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`
-  return fetch(`${API_URL}${path}`, { headers }).then(async (response) => {
-    if (!response.ok) throw { code: 'HTTP', message: 'Download failed.', status: response.status } satisfies ApiError
+  if (init.body !== undefined) headers['Content-Type'] = 'application/json'
+  return fetch(`${API_URL}${path}`, { method: init.method ?? 'GET', headers, body: init.body === undefined ? undefined : JSON.stringify(init.body) }).then(async (response) => {
+    if (response.status === 401 && retry) {
+      refreshPromise ??= refreshSession().finally(() => { refreshPromise = null })
+      if (await refreshPromise) return download(path, init, false)
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw { code: body?.error?.code ?? 'HTTP', message: body?.error?.message ?? 'Download failed.', status: response.status } satisfies ApiError
+    }
     const blob = await response.blob()
     const name = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? 'report'
     const url = URL.createObjectURL(blob)

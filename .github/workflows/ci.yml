@@ -4,8 +4,13 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Lint, test and build
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -26,14 +31,71 @@ jobs:
       JWT_REFRESH_SECRET: ci-refresh-secret
       AI_PROVIDER: mock
       NODE_ENV: test
+      SIMULATOR_AUTOSTART: "false"
+      SEED_TRANSACTION_COUNT: "500"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm install
-      - run: npm run db:generate
-      - run: npx prisma migrate deploy
-      - run: npm test
-      - run: npm run build
+      - name: Install
+        run: npm ci || npm install
+      - name: Generate Prisma client
+        run: npm run db:generate
+      - name: Build shared package
+        run: npm run build -w @finopsx/shared
+      - name: Lint (type check)
+        run: npm run lint
+      - name: Migrate and seed synthetic data
+        run: |
+          npx prisma migrate deploy
+          npm run db:seed
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Check client bundle for secrets
+        run: |
+          if grep -rEl "JWT_SECRET|DATABASE_URL|postgres(ql)?://|AI_API_KEY|sk-[A-Za-z0-9]{20}" client/dist; then
+            echo "Client bundle contains server-side configuration" && exit 1
+          fi
+
+  deploy:
+    name: Deploy
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Deploy API to Render
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL is not set; Render deploys through its own 'after CI checks pass' trigger."
+          else
+            curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+          fi
+      - name: Deploy client to Vercel
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "Vercel secrets are not set; skipping the Vercel CLI deploy."
+            exit 0
+          fi
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      - name: Smoke test live API
+        run: |
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS https://finopsx-api.onrender.com/health; then exit 0; fi
+            sleep 30
+          done
+          echo "Live API health check did not pass" && exit 1

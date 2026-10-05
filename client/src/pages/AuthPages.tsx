@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { Button, Field, inputClass, Spark } from '../components/ui'
 import { useAuth, useToast } from '../contexts'
-import type { PublicUser } from '@finopsx/shared'
+import { DEMO_LABELS, type PublicUser } from '@finopsx/shared'
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -49,7 +49,10 @@ export function LoginPage() {
             <button className="sky-text mt-4 text-left font-display text-7xl uppercase leading-none" onClick={() => setWord((value) => (value + 1) % WORDS.length)}>{WORDS[word]}</button>
             <p className="sky-text mt-4 max-w-md text-base font-medium">Monitor. Investigate. Understand.</p>
           </div>
-          <p className="sky-text text-sm font-medium">Conceptual demonstration. Synthetic data only.</p>
+          <div className="sky-text space-y-1 text-sm font-medium">
+            <p>{DEMO_LABELS.environment} · {DEMO_LABELS.synthetic}</p>
+            <p>{DEMO_LABELS.disclaimer}</p>
+          </div>
         </div>
       </section>
       <section className="flex items-center justify-center bg-canvas px-4 py-12">
@@ -57,6 +60,7 @@ export function LoginPage() {
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-muted">FinOpsX</p>
             <h1 className="mt-2 text-2xl font-semibold">Sign in</h1>
+            <p className="mt-1 text-xs text-muted lg:hidden">{DEMO_LABELS.environment} · {DEMO_LABELS.synthetic}. {DEMO_LABELS.disclaimer}</p>
           </div>
           <Field label="Email" error={form.formState.errors.email?.message}>
             <input className={inputClass} type="email" autoComplete="username" {...form.register('email')} />
@@ -74,7 +78,7 @@ export function LoginPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-muted">Demo accounts · development only</p>
               <div className="mt-2 grid gap-2">
                 {demo.data.accounts.map((account) => (
-                  <button key={account.email} type="button" className="rounded border border-line px-2 py-1 text-left text-xs hover:bg-slate-50 dark:hover:bg-white/5" onClick={() => { form.setValue('email', account.email); form.setValue('password', account.password) }}>
+                  <button key={account.email} type="button" className="rounded border border-line px-2 py-1 text-left text-xs hover:bg-slate-50 dark:hover:bg-white/5" onClick={() => { form.clearErrors(); form.setValue('email', account.email, { shouldDirty: true }); form.setValue('password', account.password, { shouldDirty: true }) }}>
                     {account.role.replaceAll('_', ' ')} · {account.email}
                   </button>
                 ))}

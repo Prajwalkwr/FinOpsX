@@ -41,6 +41,9 @@ const schema = z.object({
   SMTP_PASS: z.string().optional().default(''),
   SMTP_FROM: z.string().default('noreply@finopsx.demo'),
   SEED_TRANSACTION_COUNT: z.coerce.number().default(20000),
+  SIMULATOR_AUTOSTART: z.enum(['true', 'false']).default('true'),
+  TRANSACTION_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  MAX_TRANSACTIONS: z.coerce.number().int().min(1000).default(150000),
 })
 
 const parsed = schema.parse(process.env)
@@ -92,6 +95,9 @@ export const env = {
   smtpPass: parsed.SMTP_PASS,
   smtpFrom: parsed.SMTP_FROM,
   seedTransactionCount: parsed.SEED_TRANSACTION_COUNT,
+  simulatorAutostart: parsed.SIMULATOR_AUTOSTART === 'true' && parsed.NODE_ENV !== 'test',
+  transactionRetentionDays: parsed.TRANSACTION_RETENTION_DAYS,
+  maxTransactions: parsed.MAX_TRANSACTIONS,
   aiEnabled: parsed.AI_PROVIDER === 'openai' && parsed.AI_API_KEY.length > 0,
   emailEnabled: parsed.SMTP_HOST.length > 0 && parsed.SMTP_USER.length > 0,
   isProd: parsed.NODE_ENV === 'production',
@@ -102,7 +108,7 @@ export function isAllowedOrigin(origin?: string) {
   if (env.clientOrigins.includes(origin)) return true
   try {
     const url = new URL(origin)
-    return url.protocol === 'https:' && url.hostname.endsWith('.vercel.app')
+    return url.protocol === 'https:' && url.hostname.startsWith('finopsx') && url.hostname.endsWith('.vercel.app')
   } catch {
     return false
   }

@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js'
-import { emit } from '../lib/realtime.js'
+import { emitToUser } from '../lib/realtime.js'
 
 export async function notifyUsers(input: {
   roles?: Array<'SUPER_ADMIN' | 'OPERATIONS_MANAGER' | 'ANALYST' | 'ENGINEER' | 'AUDITOR'>
@@ -31,5 +31,5 @@ export async function notifyUsers(input: {
       link: input.link,
     })),
   })
-  emit('notification:created', { type: input.type, severity: input.severity })
+  for (const user of users) emitToUser(user.id, 'notification:created', { type: input.type, severity: input.severity, title: input.title, link: input.link ?? null })
 }

@@ -1,7 +1,8 @@
 import crypto from 'crypto'
 import type { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
-import type { ZodType } from 'zod'
+import { Prisma } from '@prisma/client'
+import { ZodError, type ZodType } from 'zod'
 import { env } from '../config/env.js'
 import { AppError, unauthorized } from '../lib/errors.js'
 import type { AuthUser } from '../lib/http.js'
@@ -52,6 +53,37 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
       },
     })
     return
+  }
+  if (err instanceof ZodError) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Some fields are missing or invalid.',
+        details: err.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })),
+        requestId,
+      },
+    })
+    return
+  }
+  const bodyError = err as { type?: string; status?: number }
+  if (bodyError?.type === 'entity.parse.failed') {
+    res.status(400).json({ success: false, error: { code: 'INVALID_JSON', message: 'The request body is not valid JSON.', details: [], requestId } })
+    return
+  }
+  if (bodyError?.type === 'entity.too.large') {
+    res.status(413).json({ success: false, error: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.', details: [], requestId } })
+    return
+  }
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2002') {
+      res.status(409).json({ success: false, error: { code: 'CONFLICT', message: 'A record with the same unique value already exists.', details: [], requestId } })
+      return
+    }
+    if (err.code === 'P2025') {
+      res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource not found.', details: [], requestId } })
+      return
+    }
   }
   logger.error('unhandled error', {
     requestId,

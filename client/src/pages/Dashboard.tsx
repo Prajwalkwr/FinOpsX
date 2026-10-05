@@ -1,303 +1,239 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
-import { can, formatCount, formatDuration, formatNpr, formatPercent, ROLE_LABEL } from '@finopsx/shared'
-import { api } from '../api'
-import { useAuth, useToast } from '../contexts'
-import { EmptyState, ErrorState, Skeleton } from '../components/ui'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { can, formatCount, formatNpr, PAYMENT_LABEL, type PaymentMethod } from '@finopsx/shared'
+import { api, errorMessage } from '../api'
+import { useAuth } from '../contexts'
+import { useRealtime } from '../realtime'
+import { chartTick, fmtMs, fmtPct, relTime } from '../lib/format'
+import { Card, EmptyState, ErrorState, Select, Skeleton, StatusBadge, Table } from '../components/ui'
 
-const RANGES = ['1h', '6h', '24h', '7d', '30d', 'today', 'yesterday']
-const SCENARIOS = ['BANK_API_LATENCY', 'PAYMENT_FAILURE_SPIKE', 'SETTLEMENT_DELAY', 'NOTIFICATION_DEGRADATION', 'HIGH_VOLUME', 'MERCHANT_ACTIVITY']
-const METHOD_LABEL: Record<string, string> = {
-  CARD: 'Card payments',
-  BANK_TRANSFER: 'Bank transfers',
-  WALLET: 'Wallet payments',
-  QR: 'QR payments',
-  MOBILE_BANKING: 'Mobile banking',
-}
+const RANGES: Array<[string, string]> = [['1h', 'Last hour'], ['6h', 'Last 6 hours'], ['24h', 'Last 24 hours'], ['today', 'Today'], ['yesterday', 'Yesterday'], ['7d', 'Last 7 days'], ['30d', 'Last 30 days']]
 
-type Summary = {
+type Overview = {
+  range: { from: string; to: string; label: string; unit: string }
   systemStatus: string
-  healthScore: number
-  kpis: { total: number; successful: number; failed: number; pending: number; successRate: number; value: number; activeIncidents: number; apiAvailability: number; avgResponseMs: number }
-  services: Array<{ key: string; name: string; status: string; responseTimeMs: number; uptime: number; lastCheckedAt: string }>
-  alerts: Array<{ id: string; title: string; type: string; severity: string; link: string }>
-  topInstitutions: Array<{ id: string; name: string; successRate: number; failureRate: number }>
-  recent: Array<{ transactionId: string; status: string; amount: number; paymentMethod?: string; institution: { name: string } | null; merchant: { name: string } | null; createdAt: string }>
+  kpis: { total: number; successful: number; failed: number; pending: number; successRate: number; failureRate: number; value: number; activeIncidents: number; apiAvailability: number | null; apiCallsLastHour: number; avgResponseMs: number; p95Ms: number; openAnomalies: number }
+  volume: Array<{ time: string; success: number; failed: number; pending: number; other: number; value: number }>
+  outcomes: Array<{ name: string; value: number }>
+  paymentMethods: Array<{ method: PaymentMethod; count: number; value: number }>
+  services: Array<{ id: string; key: string; name: string; status: string; responseTimeMs: number | null; uptime: number | null; errorRate: number | null; lastCheckedAt: string }>
+  aiAlerts: Array<{ id: string; tone: string; message: string; href: string }>
+  activeIncidents: Array<{ id: string; title: string; severity: string; status: string; createdAt: string; assignee: string | null; services: string[] }>
+  institutions: Array<{ id: string; name: string; code: string; status: string; transactions: number; successRate: number; failureRate: number; avgResponseMs: number; value: number }>
+  anomalies: Array<{ id: string; type: string; severity: string; status: string; title: string; entity: string | null; normalValue: number | null; observedValue: number | null; detectedAt: string }>
+  recent: Array<{ transactionId: string; status: string; amount: number; paymentMethod: PaymentMethod; institution: { name: string }; merchant: { name: string }; createdAt: string; responseTimeMs: number }>
 }
 
-function relTime(iso?: string) {
-  if (!iso) return 'just now'
-  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins} min ago`
-  return `${Math.round(mins / 60)} hr ago`
-}
-
-function sample<T>(rows: T[], count: number) {
-  if (rows.length <= count) return rows
-  const step = (rows.length - 1) / (count - 1)
-  return Array.from({ length: count }, (_, index) => rows[Math.round(index * step)])
-}
-
-function MiniBars({ values }: { values: number[] }) {
-  const peak = Math.max(...values, 1)
+function LiveStrip() {
+  const { snapshot, state } = useRealtime()
+  if (!snapshot) return <p className="text-xs text-muted">{state === 'live' ? 'Waiting for the first live sample…' : 'Live metrics resume when the realtime connection is back.'}</p>
+  const items = [
+    ['Transactions / min', formatCount(snapshot.transactionsLastMinute)],
+    ['Success (5 min)', fmtPct(snapshot.window5m.successRate)],
+    ['Avg latency (5 min)', fmtMs(snapshot.window5m.avgLatencyMs)],
+    ['API availability (5 min)', fmtPct(snapshot.window5m.apiAvailability, 2)],
+    ['Pending now', formatCount(snapshot.pendingTransactions)],
+  ]
   return (
-    <div className="flex h-7 items-end gap-[3px]" aria-hidden="true">
-      {values.map((value, index) => (
-        <span key={index} className="w-[5px] rounded-[2px] bg-brand" style={{ height: `${Math.max(18, (value / peak) * 100)}%`, opacity: 0.45 + (index / values.length) * 0.55 }} />
+    <div className="grid grid-cols-2 gap-3 rounded-3xl bg-panel p-4 text-white sm:grid-cols-3 lg:grid-cols-5" aria-label="Live metrics">
+      {items.map(([label, value]) => (
+        <div key={label}>
+          <p className="text-[11px] uppercase tracking-wide text-white/60">{label}</p>
+          <p className="mt-0.5 text-xl font-semibold tabular-nums">{value}</p>
+        </div>
       ))}
+      {snapshot.degradedServices.length ? (
+        <p className="col-span-full text-xs text-amber-200">Degraded: {snapshot.degradedServices.map((service) => `${service.name} (${service.status.toLowerCase()})`).join(', ')}</p>
+      ) : null}
     </div>
   )
-}
-
-function SegmentBar({ value, max }: { value: number; max: number }) {
-  const filled = Math.round((value / Math.max(max, 1)) * 16)
-  return (
-    <div className="mt-2 flex gap-1" aria-hidden="true">
-      {Array.from({ length: 16 }, (_, index) => (
-        <span key={index} className={`h-6 w-1.5 rounded-sm ${index < filled ? 'bg-brand' : 'bg-[#e7edf5] dark:bg-white/10'}`} />
-      ))}
-    </div>
-  )
-}
-
-function statusPill(status: string) {
-  if (status === 'SUCCESS') return { label: 'Completed', className: 'bg-emerald-50 text-emerald-600' }
-  if (status === 'PENDING') return { label: 'Pending', className: 'bg-orange-50 text-orange-500' }
-  if (status === 'FAILED') return { label: 'Failed', className: 'bg-red-50 text-red-600' }
-  return { label: status.replaceAll('_', ' '), className: 'bg-slate-100 text-slate-600' }
 }
 
 export function DashboardPage() {
   const { user } = useAuth()
-  const toast = useToast()
   const [range, setRange] = useState('24h')
-  const [series, setSeries] = useState<'all' | 'success' | 'failed'>('all')
-  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'FAILED' | 'SUCCESS'>('ALL')
-  const summary = useQuery({ queryKey: ['dashboard', 'summary', range], queryFn: () => api<Summary>(`/api/dashboard/summary?range=${range}`) })
-  const volume = useQuery({ queryKey: ['dashboard', 'volume', range], queryFn: () => api<Array<{ time: string; success: number; failed: number; pending: number }>>(`/api/dashboard/volume?range=${range}`) })
-  const payments = useQuery({
-    queryKey: ['payments', range],
-    enabled: Boolean(user && can(user.role, 'analytics:view')),
-    queryFn: () => api<Array<{ paymentMethod: string; status: string; _count: { _all: number } }>>(`/api/analytics/payments?range=${range}`),
-  })
-  const simulator = useQuery({
-    queryKey: ['simulator'],
-    enabled: Boolean(user && can(user.role, 'simulator:control')),
-    queryFn: () => api<{ running: boolean; scenario: string | null; tpm: number; warning: string }>('/api/simulator/status'),
-  })
+  const query = useQuery({ queryKey: ['dashboard', 'overview', range], queryFn: () => api<Overview>(`/api/dashboard/overview?range=${range}`), refetchInterval: 30_000 })
 
-  const bars = useMemo(() => sample(volume.data ?? [], 14).map((row) => ({
-    ...row,
-    label: row.time.slice(11, 16) || row.time.slice(5, 10),
-    shown: series === 'failed' ? row.failed : series === 'success' ? row.success : row.success + row.failed + row.pending,
-  })), [volume.data, series])
-  const spark = useMemo(() => (volume.data ?? []).map((row) => row.success + row.failed + row.pending), [volume.data])
-  const channels = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const row of payments.data ?? []) totals.set(row.paymentMethod, (totals.get(row.paymentMethod) ?? 0) + row._count._all)
-    return [...totals.entries()].sort((a, b) => b[1] - a[1])
-  }, [payments.data])
-
-  if (summary.isLoading) return <div className="grid gap-3 md:grid-cols-4">{Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-28 rounded-3xl" />)}</div>
-  if (summary.isError) return <ErrorState message={(summary.error as { message: string }).message} onRetry={() => summary.refetch()} />
-  const data = summary.data!
-  const synced = data.services.map((service) => service.lastCheckedAt).sort().at(-1)
-  const recent = data.recent.filter((row) => filter === 'ALL' || row.status === filter)
-  const channelMax = channels[0]?.[1] ?? 1
-  const when = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kathmandu' })
-
-  async function scenario(name: string) {
-    try {
-      await api('/api/simulator/scenario', { method: 'POST', headers: { 'Idempotency-Key': `${name}-${Date.now()}` }, body: JSON.stringify({ name }) })
-      toast.push('Scenario started. Watch health, anomalies, and incidents.')
-      simulator.refetch()
-      summary.refetch()
-    } catch (error) {
-      toast.push((error as { message: string }).message, 'err')
-    }
-  }
-
-  const metrics = [
-    { label: 'Total volume', value: formatNpr(data.kpis.value), hint: 'Processed transactions', values: spark },
-    { label: 'Successful', value: formatCount(data.kpis.successful), hint: `${formatPercent(data.kpis.successRate)} success`, values: (volume.data ?? []).map((row) => row.success) },
-    { label: 'Failed', value: formatCount(data.kpis.failed), hint: `${data.kpis.activeIncidents} active incidents`, values: (volume.data ?? []).map((row) => row.failed) },
-    { label: 'Pending settlements', value: formatCount(data.kpis.pending), hint: `${formatDuration(data.kpis.avgResponseMs)} avg response`, values: (volume.data ?? []).map((row) => row.pending) },
+  if (query.isLoading) return <div className="grid gap-3 md:grid-cols-4">{Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-28 rounded-3xl" />)}</div>
+  if (query.isError) return <ErrorState message={errorMessage(query.error)} onRetry={() => query.refetch()} />
+  const data = query.data!
+  const k = data.kpis
+  const kpis: Array<{ label: string; value: string; hint: string; tone?: string; href?: string }> = [
+    { label: 'Transactions', value: formatCount(k.total), hint: data.range.label, href: '/transactions' },
+    { label: 'Success rate', value: fmtPct(k.successRate, 2), hint: `${formatCount(k.successful)} successful`, tone: k.successRate < 90 ? 'bad' : undefined },
+    { label: 'Failed', value: formatCount(k.failed), hint: `${fmtPct(k.failureRate, 2)} failure rate`, tone: k.failureRate > 8 ? 'bad' : undefined, href: '/transactions?status=FAILED' },
+    { label: 'Pending', value: formatCount(k.pending), hint: 'Awaiting final status', href: '/transactions?status=PENDING' },
+    { label: 'Value processed', value: formatNpr(k.value), hint: 'All statuses' },
+    { label: 'API availability', value: fmtPct(k.apiAvailability, 2), hint: `${formatCount(k.apiCallsLastHour)} calls in the last hour`, tone: k.apiAvailability != null && k.apiAvailability < 95 ? 'bad' : undefined },
+    { label: 'Latency avg / P95', value: `${fmtMs(k.avgResponseMs)} / ${fmtMs(k.p95Ms)}`, hint: 'Transaction response time' },
+    { label: 'Active incidents', value: String(k.activeIncidents), hint: `${k.openAnomalies} open anomalies`, tone: k.activeIncidents ? 'warn' : undefined, href: '/incidents?active=true' },
   ]
+  const toneClass = (tone?: string) => tone === 'bad' ? 'text-red-700 dark:text-red-300' : tone === 'warn' ? 'text-amber-700 dark:text-amber-300' : ''
 
   return (
-    <div className="md:pr-56">
-      <div>
-        <h1 className="text-[1.7rem] font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted">
-          <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-brand" /> Account · {user ? ROLE_LABEL[user.role] : 'Operations'}</span>
-          <span>Last synced {relTime(synced)}</span>
-          <span>{data.systemStatus}</span>
-          <label>Range
-            <select className="ml-2 rounded-full border border-line bg-card px-3 py-1 text-sm text-ink" value={range} onChange={(event) => setRange(event.target.value)} aria-label="Dashboard range">
-              {RANGES.map((item) => <option key={item}>{item}</option>)}
-            </select>
-          </label>
-        </p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-[1.7rem] font-semibold tracking-tight">Overview</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+            <StatusBadge status={data.systemStatus} />
+            <span>{data.range.label}</span>
+            <span>Updated {relTime(data.range.to)}</span>
+          </p>
+        </div>
+        <Select label="Overview time range" value={range} onChange={setRange} options={RANGES} />
       </div>
 
-      <section className="mt-6 grid gap-6 md:grid-cols-4 md:divide-x md:divide-[#eef2f6] dark:md:divide-white/10">
-        {metrics.map((metric) => (
-          <div key={metric.label} className="min-w-0 xl:px-4 xl:first:pl-0">
-            <p className="text-sm text-muted">{metric.label}</p>
-            <p className="mt-1 text-4xl font-semibold tracking-tight tabular-nums">{metric.value}</p>
-            <div className="mt-4 flex items-end justify-between gap-3">
-              <p className="text-xs text-muted">{metric.hint}</p>
-              <MiniBars values={sample(metric.values.length ? metric.values : [1, 2, 1, 3, 2, 4, 2, 3], 12)} />
-            </div>
-          </div>
-        ))}
+      <LiveStrip />
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Key metrics">
+        {kpis.map((item) => {
+          const body = (
+            <>
+              <p className="text-xs text-muted">{item.label}</p>
+              <p className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${toneClass(item.tone)}`}>{item.value}</p>
+              <p className="mt-1 text-xs text-muted">{item.hint}</p>
+            </>
+          )
+          return item.href
+            ? <Link key={item.label} to={item.href} className="rounded-3xl border border-line bg-card p-4 transition hover:border-brand/40">{body}</Link>
+            : <div key={item.label} className="rounded-3xl border border-line bg-card p-4">{body}</div>
+        })}
       </section>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-12">
-        <section className="rounded-[28px] bg-panel p-5 text-white xl:col-span-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm text-white/70">Transaction volume</p>
-              <p className="mt-1 text-3xl font-semibold tracking-tight">{formatNpr(data.kpis.value)}</p>
-            </div>
-            <span className="rounded-full bg-white/10 px-2 py-1 text-xs text-emerald-300">{formatPercent(data.kpis.successRate)} success</span>
-          </div>
-          <div className="mt-4 flex gap-4 text-xs text-white/70">
-            {([['all', 'All'], ['success', 'Successful'], ['failed', 'Failed']] as const).map(([key, label]) => (
-              <button key={key} className={series === key ? 'text-white' : ''} onClick={() => setSeries(key)}>{label}</button>
-            ))}
-          </div>
-          <div className="mt-2 h-44">
-            {bars.length ? (
+      <div className="grid gap-4 xl:grid-cols-12">
+        <Card title="Transaction volume" className="xl:col-span-8" action={<Link to="/analytics" className="text-xs text-brand">Analytics</Link>}>
+          {data.volume.some((row) => row.success + row.failed + row.pending > 0) ? (
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={bars} barCategoryGap={6}>
-                  <XAxis dataKey="label" tick={{ fill: '#9fb0d0', fontSize: 11 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-                  <Tooltip contentStyle={{ background: '#0c1428', border: 'none', borderRadius: 12, color: '#fff' }} />
-                  <Bar dataKey="shown" fill="#6ea2ff" radius={[5, 5, 2, 2]} />
+                <BarChart data={data.volume}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e9f0" />
+                  <XAxis dataKey="time" tickFormatter={(value) => chartTick(value, data.range.unit)} tick={{ fontSize: 11 }} interval="preserveStartEnd" minTickGap={24} />
+                  <YAxis tick={{ fontSize: 11 }} width={40} />
+                  <Tooltip labelFormatter={(value) => chartTick(String(value), data.range.unit)} />
+                  <Bar dataKey="success" name="Successful" stackId="a" fill="#2f6bff" />
+                  <Bar dataKey="pending" name="Pending" stackId="a" fill="#f59e0b" />
+                  <Bar dataKey="failed" name="Failed" stackId="a" fill="#dc2626" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            ) : <p className="pt-10 text-sm text-white/70">No transactions in this range.</p>}
-          </div>
-        </section>
+            </div>
+          ) : <EmptyState title="No transactions in this range." />}
+        </Card>
 
-        <section className="rounded-[28px] border border-line p-5 xl:col-span-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Payment channels</h2>
-            <Link to="/analytics" className="text-xs text-muted" aria-label="Open analytics">↗</Link>
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
-            {(channels.length ? channels.slice(0, 3) : [['CARD', 0], ['BANK_TRANSFER', 0], ['WALLET', 0]] as Array<[string, number]>).map(([method, count]) => (
-              <div key={method} className="min-w-0">
-                <p className="truncate text-xs text-muted">{METHOD_LABEL[method] ?? method}</p>
-                <p className="mt-1 font-semibold">{formatCount(count)} <span className="text-xs font-normal text-muted">txns</span></p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            {(channels.slice(0, 2).length ? channels.slice(0, 2) : [['QR', 0], ['CARD', 0]] as Array<[string, number]>).map(([method, count]) => (
-              <div key={method}>
-                <p className="text-xs text-muted">{METHOD_LABEL[method] ?? method}</p>
-                <p className="text-2xl font-semibold tabular-nums">{formatCount(count)}</p>
-                <SegmentBar value={count} max={channelMax} />
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border border-line p-5 xl:col-span-3">
-          <h2 className="font-semibold">Risk monitoring</h2>
-          <p className="mt-3 text-xs text-muted">Overview</p>
-          <p className="text-sm font-medium">System alerts</p>
-          {data.alerts.length ? (
-            <table className="mt-3 w-full text-left text-xs">
-              <thead className="text-muted"><tr><th className="py-1 font-medium">Risk type</th><th className="font-medium">Status</th><th className="font-medium">Action</th></tr></thead>
-              <tbody>
-                {data.alerts.slice(0, 4).map((alert) => (
-                  <tr key={alert.id} className="border-t border-line">
-                    <td className="py-2 pr-2">{alert.title}</td>
-                    <td className="text-muted">{alert.severity.replaceAll('_', ' ')}</td>
-                    <td><Link className="text-brand" to={alert.link}>Review</Link></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : <EmptyState title="No alerts in this range." />}
-        </section>
-      </div>
-
-      <div className="mt-4 grid gap-4 xl:grid-cols-12">
-        <section className="rounded-[28px] border border-line p-5 xl:col-span-7">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-semibold">Recent transactions</h2>
-            <div className="flex gap-1 rounded-full bg-[#f4f6fa] p-1 text-xs dark:bg-white/5">
-              {([['ALL', 'All'], ['PENDING', 'Pending'], ['FAILED', 'Failed'], ['SUCCESS', 'Completed']] as const).map(([key, label]) => (
-                <button key={key} className={`rounded-full px-3 py-1 ${filter === key ? 'bg-white font-medium shadow-sm dark:bg-white/10' : 'text-muted'}`} onClick={() => setFilter(key)}>{label}</button>
+        <Card title="Operational alerts" className="xl:col-span-4">
+          {data.aiAlerts.length ? (
+            <ul className="space-y-2 text-sm">
+              {data.aiAlerts.map((alert) => (
+                <li key={alert.id} className={`rounded-2xl border px-3 py-2 ${alert.tone === 'bad' ? 'border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/40' : alert.tone === 'warn' ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/40' : 'border-line'}`}>
+                  <Link to={alert.href} className="block">{alert.message}</Link>
+                </li>
               ))}
-            </div>
-          </div>
-          {recent.length ? (
-            <div className="table-wrap mt-3">
-              <table className="w-full text-left text-sm">
-                <thead className="text-xs text-muted"><tr><th className="py-2 font-medium">#</th><th className="font-medium">Merchant</th><th className="font-medium">Amount</th><th className="font-medium">Payment method</th><th className="font-medium">Status</th><th className="font-medium">Date</th></tr></thead>
-                <tbody>
-                  {recent.slice(0, 6).map((row, index) => {
-                    const pill = statusPill(row.status)
-                    return (
-                      <tr key={row.transactionId} className="border-t border-line">
-                        <td className="py-3 text-muted">{String(index + 1).padStart(2, '0')}</td>
-                        <td><Link className="font-medium" to={`/transactions/${row.transactionId}`}>{row.merchant?.name ?? row.institution?.name ?? row.transactionId}</Link></td>
-                        <td className="tabular-nums">{formatNpr(row.amount)}</td>
-                        <td className="text-muted">{METHOD_LABEL[row.paymentMethod ?? ''] ?? row.paymentMethod ?? '—'}</td>
-                        <td><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${pill.className}`}>{pill.label}</span></td>
-                        <td className="text-muted">{when.format(new Date(row.createdAt))}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : <EmptyState title="No transactions for this filter." detail="Choose another status or widen the date range." />}
-        </section>
-
-        <section className="rounded-[28px] bg-panel p-5 text-white xl:col-span-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-white/70">Daily transactions</p>
-              <p className="mt-1 text-4xl font-semibold tracking-tight">{formatCount(data.kpis.total)}</p>
-            </div>
-            <p className="text-right text-xs text-white/60">{formatCount(Math.max(...spark, data.kpis.total))}<br />peak</p>
-          </div>
-          <div className="mt-6 flex h-16 items-end gap-[3px]">
-            {sample(spark.length ? spark : [2, 4, 3, 6, 5, 8, 4, 7, 6, 9, 5, 8, 7, 4, 6, 8, 5, 7], 28).map((value, index, list) => (
-              <span key={index} className="flex-1 rounded-sm bg-[#7eb0ff]" style={{ height: `${Math.max(18, (value / Math.max(...list, 1)) * 100)}%`, opacity: 0.45 + (index / list.length) * 0.55 }} />
-            ))}
-          </div>
-          <div className="mt-6 grid grid-cols-3 gap-3 border-t border-white/10 pt-4 text-sm">
-            <div><p className="text-lg font-semibold">{formatNpr(data.kpis.value)}</p><p className="text-xs text-white/60">Payment volume</p></div>
-            <div><p className="text-lg font-semibold">{formatCount(data.kpis.failed)}</p><p className="text-xs text-white/60">Failed</p></div>
-            <div><p className="text-lg font-semibold">{formatPercent(data.kpis.apiAvailability, 1)}</p><p className="text-xs text-white/60">API availability</p></div>
-          </div>
-        </section>
+            </ul>
+          ) : <EmptyState title="Nothing needs attention right now." />}
+          <p className="mt-3 text-[11px] text-muted">Alerts are generated from live metrics and open records. Verify before acting.</p>
+        </Card>
       </div>
 
-      {user && can(user.role, 'simulator:control') ? (
-        <section className="mt-4 rounded-[28px] border border-line p-5">
-          <h2 className="font-semibold">Demo controls</h2>
-          <p className="mt-1 text-sm text-muted">{simulator.data?.warning} Simulator {simulator.data?.running ? 'running' : 'stopped'} at {simulator.data?.tpm ?? 0}/min. Active scenario: {simulator.data?.scenario ?? 'none'}.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button className="rounded-full bg-brand px-3 py-2 text-xs text-white" onClick={async () => { await api('/api/simulator/start', { method: 'POST' }); toast.push('Simulator started'); simulator.refetch() }}>Start</button>
-            <button className="rounded-full border border-line px-3 py-2 text-xs" onClick={async () => { await api('/api/simulator/stop', { method: 'POST' }); toast.push('Simulator stopped'); simulator.refetch() }}>Stop</button>
-            <button className="rounded-full border border-line px-3 py-2 text-xs" onClick={async () => { if (confirm('Reset simulator configuration and end the active scenario?')) { await api('/api/simulator/reset', { method: 'POST' }); toast.push('Simulator reset'); simulator.refetch() } }}>Reset</button>
-            {SCENARIOS.map((name) => (
-              <button key={name} className="rounded-full border border-amber-200 px-3 py-2 text-xs" onClick={() => scenario(name)}>{name.replaceAll('_', ' ')}</button>
+      <div className="grid gap-4 xl:grid-cols-12">
+        <Card title="Active incidents" className="xl:col-span-6" action={can(user!.role, 'incidents:view') ? <Link to="/incidents?active=true" className="text-xs text-brand">All incidents</Link> : null}>
+          {data.activeIncidents.length ? (
+            <ul className="divide-y divide-line text-sm">
+              {data.activeIncidents.map((incident) => (
+                <li key={incident.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <div className="min-w-0">
+                    {can(user!.role, 'incidents:view') ? <Link className="font-medium text-brand" to={`/incidents/${incident.id}`}>{incident.id}</Link> : <span className="font-medium">{incident.id}</span>}
+                    <span className="ml-2">{incident.title}</span>
+                    <p className="text-xs text-muted">{incident.services.join(', ') || 'Platform'} · {relTime(incident.createdAt)} · {incident.assignee ?? 'Unassigned'}</p>
+                  </div>
+                  <div className="flex gap-1"><StatusBadge status={incident.severity} /><StatusBadge status={incident.status} /></div>
+                </li>
+              ))}
+            </ul>
+          ) : <EmptyState title="No active incidents." />}
+        </Card>
+
+        <Card title="Service status" className="xl:col-span-6" action={can(user!.role, 'services:view') ? <Link to="/service-map" className="text-xs text-brand">Service map</Link> : null}>
+          <ul className="grid gap-2 text-sm sm:grid-cols-2">
+            {data.services.map((service) => (
+              <li key={service.id} className="flex items-center justify-between gap-2 rounded-2xl border border-line px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{service.name}</p>
+                  <p className="text-xs text-muted">{service.responseTimeMs != null ? fmtMs(service.responseTimeMs) : 'Not measured'}{service.errorRate != null ? ` · ${fmtPct(service.errorRate)} errors` : ''}</p>
+                </div>
+                <StatusBadge status={service.status} />
+              </li>
             ))}
-            <button className="rounded-full border border-emerald-200 px-3 py-2 text-xs" onClick={async () => { await api('/api/simulator/scenario/resolve', { method: 'POST' }); toast.push('Scenario resolved'); summary.refetch() }}>Resolve scenario</button>
-          </div>
-        </section>
-      ) : null}
+          </ul>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-12">
+        <Card title="Institutions" className="xl:col-span-7" action={can(user!.role, 'institutions:view') ? <Link to="/institutions" className="text-xs text-brand">All institutions</Link> : null}>
+          <Table head={['Institution', 'Status', 'Transactions', 'Success', 'Avg latency', 'Value']} minWidth={560}>
+            {data.institutions.map((row) => (
+              <tr key={row.id}>
+                <td>{can(user!.role, 'institutions:view') ? <Link className="font-medium text-brand" to={`/institutions/${row.id}`}>{row.name}</Link> : row.name}</td>
+                <td><StatusBadge status={row.status} /></td>
+                <td className="tabular-nums">{formatCount(row.transactions)}</td>
+                <td className={`tabular-nums ${row.successRate < 90 ? 'text-red-700 dark:text-red-300' : ''}`}>{fmtPct(row.successRate)}</td>
+                <td className="tabular-nums">{fmtMs(row.avgResponseMs)}</td>
+                <td className="tabular-nums">{formatNpr(row.value)}</td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+
+        <Card title="Payment methods" className="xl:col-span-5">
+          <ul className="space-y-2 text-sm">
+            {data.paymentMethods.map((row) => {
+              const max = Math.max(...data.paymentMethods.map((item) => item.count), 1)
+              return (
+                <li key={row.method}>
+                  <div className="flex justify-between"><span>{PAYMENT_LABEL[row.method] ?? row.method}</span><span className="tabular-nums text-muted">{formatCount(row.count)} · {formatNpr(row.value)}</span></div>
+                  <div className="mt-1 h-2 rounded-full bg-[#eef2f7] dark:bg-white/10"><div className="h-2 rounded-full bg-brand" style={{ width: `${(row.count / max) * 100}%` }} /></div>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-12">
+        <Card title="Recent anomalies" className="xl:col-span-5" action={can(user!.role, 'anomalies:view') ? <Link to="/anomalies" className="text-xs text-brand">All anomalies</Link> : null}>
+          {data.anomalies.length ? (
+            <ul className="divide-y divide-line text-sm">
+              {data.anomalies.map((row) => (
+                <li key={row.id} className="py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    {can(user!.role, 'anomalies:view') ? <Link className="font-medium text-brand" to={`/anomalies?focus=${row.id}`}>{row.title}</Link> : <span className="font-medium">{row.title}</span>}
+                    <StatusBadge status={row.severity} />
+                  </div>
+                  <p className="text-xs text-muted">{row.id} · {row.entity ?? 'Platform'} · {relTime(row.detectedAt)}</p>
+                </li>
+              ))}
+            </ul>
+          ) : <EmptyState title="No anomalies detected." />}
+        </Card>
+
+        <Card title="Recent transactions" className="xl:col-span-7" action={can(user!.role, 'transactions:view') ? <Link to="/transactions" className="text-xs text-brand">All transactions</Link> : null}>
+          {data.recent.length ? (
+            <Table head={['Transaction', 'Merchant', 'Bank', 'Amount', 'Status', 'When']} minWidth={600}>
+              {data.recent.map((row) => (
+                <tr key={row.transactionId}>
+                  <td>{can(user!.role, 'transactions:view') ? <Link className="font-medium text-brand" to={`/transactions/${row.transactionId}`}>{row.transactionId}</Link> : row.transactionId}</td>
+                  <td>{row.merchant.name}</td>
+                  <td>{row.institution.name}</td>
+                  <td className="tabular-nums">{formatNpr(row.amount)}</td>
+                  <td><StatusBadge status={row.status} /></td>
+                  <td className="text-muted">{relTime(row.createdAt)}</td>
+                </tr>
+              ))}
+            </Table>
+          ) : <EmptyState title="No transactions yet." />}
+        </Card>
+      </div>
     </div>
   )
 }

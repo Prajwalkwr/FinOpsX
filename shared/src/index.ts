@@ -17,32 +17,48 @@ export const ROLE_LABEL: Record<Role, string> = {
 }
 
 const ALL: Role[] = [...ROLES]
-const OPS: Role[] = ['SUPER_ADMIN', 'OPERATIONS_MANAGER', 'ENGINEER']
-const INSIGHT: Role[] = ['SUPER_ADMIN', 'OPERATIONS_MANAGER', 'ANALYST', 'AUDITOR', 'ENGINEER']
+const SA = 'SUPER_ADMIN' as const
+const OPS = 'OPERATIONS_MANAGER' as const
+const ENG = 'ENGINEER' as const
+const ANL = 'ANALYST' as const
+const AUD = 'AUDITOR' as const
 
+/**
+ * Backend-enforced permission matrix. Every protected API route checks one of these keys.
+ * AUDITOR receives read-only (`:view`) keys and never a mutating key.
+ */
 export const PERMISSIONS = {
   'dashboard:view': ALL,
-  'transactions:view': ALL,
-  'transactions:investigate': ALL,
-  'system:view': ['SUPER_ADMIN', 'OPERATIONS_MANAGER', 'ENGINEER', 'AUDITOR'],
-  'incidents:view': ALL,
-  'incidents:manage': OPS,
-  'incidents:assign': ['SUPER_ADMIN', 'OPERATIONS_MANAGER'],
-  'anomalies:view': INSIGHT,
-  'anomalies:review': ['SUPER_ADMIN', 'OPERATIONS_MANAGER', 'ANALYST'],
-  'institutions:view': ALL,
-  'analytics:view': INSIGHT,
-  'reports:view': ALL,
-  'reports:generate': ['SUPER_ADMIN', 'OPERATIONS_MANAGER', 'ANALYST'],
-  'reports:delete': ['SUPER_ADMIN', 'OPERATIONS_MANAGER'],
-  'ai:use': ['SUPER_ADMIN', 'OPERATIONS_MANAGER', 'ANALYST', 'ENGINEER'],
-  'audit:view': ['SUPER_ADMIN', 'AUDITOR'],
-  'users:manage': ['SUPER_ADMIN'],
-  'settings:thresholds': ['SUPER_ADMIN'],
-  'settings:security': ['SUPER_ADMIN'],
-  'simulator:control': ['SUPER_ADMIN', 'ENGINEER'],
-  'logs:view': ['SUPER_ADMIN', 'ENGINEER', 'AUDITOR'],
-} as const
+  'notifications:view': ALL,
+  'transactions:view': [SA, OPS, ANL, AUD],
+  'transactions:investigate': [SA, OPS, ANL],
+  'institutions:view': [SA, OPS, AUD],
+  'incidents:view': [SA, OPS, ENG, AUD],
+  'incidents:manage': [SA, OPS, ENG],
+  'incidents:assign': [SA, OPS],
+  'anomalies:view': [SA, ANL, AUD],
+  'anomalies:review': [SA, ANL],
+  'analytics:view': [SA, OPS, ANL, AUD],
+  'reports:view': [SA, OPS, ANL, AUD],
+  'reports:generate': [SA, OPS, ANL],
+  'reports:delete': [SA, OPS],
+  'system:view': [SA, ENG, AUD],
+  'apis:view': [SA, ENG, AUD],
+  'services:view': [SA, ENG, AUD],
+  'reconciliation:view': [SA, OPS, AUD],
+  'reconciliation:run': [SA, OPS],
+  'jobs:view': [SA, OPS, ENG, AUD],
+  'jobs:run': [SA, OPS, ENG],
+  'dataquality:view': [SA, OPS, ANL, ENG, AUD],
+  'dataquality:manage': [SA, ANL, ENG],
+  'ai:use': [SA, OPS, ANL, ENG],
+  'askdata:use': [SA, OPS, ANL],
+  'audit:view': [SA, AUD],
+  'users:manage': [SA],
+  'settings:thresholds': [SA],
+  'settings:security': [SA],
+  'simulator:control': [SA, ENG],
+} as const satisfies Record<string, readonly Role[]>
 
 export type Permission = keyof typeof PERMISSIONS
 
@@ -57,15 +73,10 @@ export function isAuditor(role: Role): boolean {
 export function formatNpr(value: number): string {
   const abs = Math.abs(value)
   const sign = value < 0 ? '-' : ''
-  if (abs >= 1_000_000_000) {
-    const scaled = abs / 1_000_000_000
-    const digits = scaled >= 10 ? 1 : 1
-    return `${sign}Rs. ${scaled.toFixed(digits)}B`
-  }
+  if (abs >= 1_000_000_000) return `${sign}Rs. ${(abs / 1_000_000_000).toFixed(1)}B`
   if (abs >= 1_000_000) {
     const scaled = abs / 1_000_000
-    const digits = scaled >= 10 ? 1 : 2
-    return `${sign}Rs. ${trimNumber(scaled.toFixed(digits))}M`
+    return `${sign}Rs. ${trimNumber(scaled.toFixed(scaled >= 10 ? 1 : 2))}M`
   }
   return `${sign}Rs. ${Math.round(abs).toLocaleString('en-US')}`
 }
@@ -94,10 +105,20 @@ export function formatCount(value: number): string {
   return `${sign}${Math.round(abs).toLocaleString('en-US')}`
 }
 
-export const TX_STATUSES = ['SUCCESS', 'FAILED', 'PENDING', 'CANCELLED', 'REFUNDED'] as const
+export const TX_STATUSES = ['INITIATED', 'PROCESSING', 'SUCCESS', 'FAILED', 'PENDING', 'REVERSED', 'SETTLED', 'CANCELLED', 'REFUNDED'] as const
 export type TxStatus = (typeof TX_STATUSES)[number]
 
-export const PAYMENT_METHODS = ['QR', 'WALLET', 'BANK_TRANSFER', 'CARD', 'MOBILE_BANKING'] as const
+/** Statuses that count as a successful payment in every metric (dashboard, analytics, reports, AI). */
+export const SUCCESS_STATUSES = ['SUCCESS', 'SETTLED'] as const satisfies readonly TxStatus[]
+
+export function isSuccessStatus(status: string): boolean {
+  return (SUCCESS_STATUSES as readonly string[]).includes(status)
+}
+
+export const LIFECYCLE_STAGES = ['INITIATED', 'AUTHENTICATING', 'PROCESSING', 'OUTCOME', 'SETTLEMENT', 'COMPLETED'] as const
+export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number]
+
+export const PAYMENT_METHODS = ['QR', 'WALLET', 'BANK_TRANSFER', 'CARD', 'ACCOUNT_PAYMENT'] as const
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
 export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
@@ -105,35 +126,50 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   WALLET: 'Wallet',
   BANK_TRANSFER: 'Bank Transfer',
   CARD: 'Card',
-  MOBILE_BANKING: 'Mobile Banking',
+  ACCOUNT_PAYMENT: 'Account Payment',
 }
 
 export const INCIDENT_STATUSES = [
-  'OPEN',
+  'DETECTED',
+  'ACKNOWLEDGED',
   'INVESTIGATING',
   'IDENTIFIED',
   'MITIGATING',
   'RESOLVED',
-  'CLOSED',
+  'POST_INCIDENT_REVIEW',
 ] as const
 export type IncidentStatus = (typeof INCIDENT_STATUSES)[number]
+export const ACTIVE_INCIDENT_STATUSES = ['DETECTED', 'ACKNOWLEDGED', 'INVESTIGATING', 'IDENTIFIED', 'MITIGATING'] as const satisfies readonly IncidentStatus[]
 
 export const SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const
 export type Severity = (typeof SEVERITIES)[number]
 
 export const ANOMALY_TYPES = [
   'HIGH_VALUE_SPIKE',
-  'TRANSACTION_VOLUME_SPIKE',
+  'FAILURE_RATE_SPIKE',
+  'API_LATENCY_SPIKE',
   'REPEATED_FAILURE',
-  'API_LATENCY_ANOMALY',
-  'MERCHANT_ACTIVITY_ANOMALY',
-  'BANK_FAILURE_SPIKE',
+  'MERCHANT_VOLUME_SPIKE',
+  'INSTITUTION_ACTIVITY',
   'SETTLEMENT_DELAY',
+  'TRANSACTION_VOLUME_SPIKE',
   'UNUSUAL_TIME_ACTIVITY',
 ] as const
 export type AnomalyType = (typeof ANOMALY_TYPES)[number]
 
-export const ANOMALY_STATUSES = ['DETECTED', 'REVIEW', 'CONFIRMED', 'DISMISSED'] as const
+export const ANOMALY_LABEL: Record<AnomalyType, string> = {
+  HIGH_VALUE_SPIKE: 'High-value spike',
+  FAILURE_RATE_SPIKE: 'Failure-rate spike',
+  API_LATENCY_SPIKE: 'API latency spike',
+  REPEATED_FAILURE: 'Repeated failures',
+  MERCHANT_VOLUME_SPIKE: 'Unusual merchant volume',
+  INSTITUTION_ACTIVITY: 'Unusual institution activity',
+  SETTLEMENT_DELAY: 'Settlement delay',
+  TRANSACTION_VOLUME_SPIKE: 'Transaction volume spike',
+  UNUSUAL_TIME_ACTIVITY: 'Unusual time activity',
+}
+
+export const ANOMALY_STATUSES = ['DETECTED', 'REVIEW', 'CONFIRMED', 'DISMISSED', 'RESOLVED'] as const
 
 export const SERVICE_STATUSES = ['OPERATIONAL', 'DEGRADED', 'INCIDENT', 'MAINTENANCE'] as const
 export type ServiceStatus = (typeof SERVICE_STATUSES)[number]
@@ -152,22 +188,75 @@ export const FAILURE_REASONS = [
 
 export const REPORT_TYPES = [
   'DAILY_OPERATIONS',
-  'TRANSACTION_SUMMARY',
-  'INSTITUTION_PERFORMANCE',
   'INCIDENT_REPORT',
+  'INSTITUTION_PERFORMANCE',
+  'TRANSACTION_SUMMARY',
   'ANOMALY_REPORT',
+  'RECONCILIATION_REPORT',
   'SYSTEM_HEALTH',
 ] as const
 export type ReportType = (typeof REPORT_TYPES)[number]
 
 export const REPORT_LABEL: Record<ReportType, string> = {
   DAILY_OPERATIONS: 'Daily Operations Report',
-  TRANSACTION_SUMMARY: 'Transaction Summary',
-  INSTITUTION_PERFORMANCE: 'Institution Performance',
   INCIDENT_REPORT: 'Incident Report',
+  INSTITUTION_PERFORMANCE: 'Institution Performance Report',
+  TRANSACTION_SUMMARY: 'Transaction Report',
   ANOMALY_REPORT: 'Anomaly Report',
+  RECONCILIATION_REPORT: 'Reconciliation Report',
   SYSTEM_HEALTH: 'System Health Report',
 }
+
+export const RECON_STATUSES = ['MATCHED', 'MISMATCH', 'INVESTIGATING', 'RESOLVED'] as const
+export type ReconStatus = (typeof RECON_STATUSES)[number]
+
+export const JOB_TYPES = [
+  'EOD_SETTLEMENT',
+  'TRANSACTION_RECONCILIATION',
+  'DAILY_REPORT',
+  'DATA_VALIDATION',
+  'BACKUP_SIMULATION',
+  'SETTLEMENT_VALIDATION',
+] as const
+export type JobType = (typeof JOB_TYPES)[number]
+
+export const JOB_LABEL: Record<JobType, string> = {
+  EOD_SETTLEMENT: 'EOD Settlement',
+  TRANSACTION_RECONCILIATION: 'Transaction Reconciliation',
+  DAILY_REPORT: 'Daily Report Generation',
+  DATA_VALIDATION: 'Data Validation',
+  BACKUP_SIMULATION: 'Backup Simulation',
+  SETTLEMENT_VALIDATION: 'Settlement Validation',
+}
+
+export const JOB_STATUSES = ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED'] as const
+
+export const DQ_STATUSES = ['OPEN', 'INVESTIGATING', 'RESOLVED'] as const
+
+export const SCENARIOS = [
+  'BANK_API_LATENCY',
+  'PAYMENT_FAILURE_SPIKE',
+  'SETTLEMENT_DELAY',
+  'HIGH_VOLUME',
+  'MERCHANT_ACTIVITY',
+  'NOTIFICATION_DEGRADATION',
+] as const
+export type Scenario = (typeof SCENARIOS)[number]
+
+export const SCENARIO_LABEL: Record<Scenario, string> = {
+  BANK_API_LATENCY: 'Bank API Latency Spike',
+  PAYMENT_FAILURE_SPIKE: 'Payment Failure Spike',
+  SETTLEMENT_DELAY: 'Settlement Delay',
+  HIGH_VOLUME: 'High Transaction Volume',
+  MERCHANT_ACTIVITY: 'Merchant Activity Spike',
+  NOTIFICATION_DEGRADATION: 'Notification Degradation',
+}
+
+export const DEMO_LABELS = {
+  environment: 'FinOpsX — Demo Environment',
+  synthetic: 'Synthetic Data Only',
+  disclaimer: 'Conceptual fintech operations platform. Not affiliated with or endorsed by F1Soft.',
+} as const
 
 export interface PublicUser {
   id: string
@@ -190,4 +279,9 @@ export interface Page<T> {
   limit: number
   total: number
   totalPages: number
+}
+
+export interface AiAction {
+  label: string
+  href: string
 }

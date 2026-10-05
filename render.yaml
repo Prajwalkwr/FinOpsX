@@ -13,6 +13,7 @@ services:
     buildCommand: npm install --include=dev && npx prisma generate && npm run build -w @finopsx/shared && npm run build -w server && npm run build:seed
     startCommand: npx prisma migrate deploy && node server/dist/seed.js && node server/dist/index.js
     healthCheckPath: /health
+    autoDeployTrigger: checksPass
     envVars:
       - key: NODE_ENV
         value: production

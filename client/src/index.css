@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Grid items default to min-width:auto, which lets wide tables push columns past a phone screen. */
+.grid > * {
+  min-width: 0;
+}
+
 :root {
   color-scheme: light;
   --bg: #e7e9ee;

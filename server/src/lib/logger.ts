@@ -1,6 +1,9 @@
 type Level = 'info' | 'warn' | 'error'
 
+const quiet = Boolean(process.env.VITEST)
+
 function write(level: Level, message: string, fields?: Record<string, unknown>) {
+  if (quiet && level === 'info') return
   const payload = {
     time: new Date().toISOString(),
     level,
