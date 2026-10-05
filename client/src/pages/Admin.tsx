@@ -268,7 +268,7 @@ export function SettingsPage() {
           <div className="space-y-2 text-sm">
             <p>AI provider: <strong>{data.ai.provider === 'mock' ? 'Local FinOpsX analysis engine' : `OpenAI-compatible (${data.ai.model})`}</strong></p>
             <p className="text-muted">{data.ai.message}</p>
-            <p className="text-muted">Configure AI_PROVIDER, AI_API_KEY and AI_MODEL in the server environment. Keys are never entered or stored through this page.</p>
+            <p className="text-muted">Configure the AI provider, API key and model in the server environment (see the README). Keys are never entered or stored through this page.</p>
             <p>{data.email}</p>
           </div>
         ) : null}
