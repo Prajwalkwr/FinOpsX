@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "npm run build -w client",
+  "buildCommand": "npm run build -w @finopsx/shared && npm run build -w client",
   "outputDirectory": "client/dist",
   "framework": "vite",
   "rewrites": [
