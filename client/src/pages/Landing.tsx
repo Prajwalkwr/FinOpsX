@@ -117,7 +117,7 @@ export function LandingPage() {
         </div>
         <div className="space-y-4 text-base leading-7 text-[#1e293b]">
           <p>FinOpsX is a demo operations console: live synthetic transactions, service health, incidents, anomalies, reconciliation, and an assistant that answers from the database.</p>
-          <p>This is not an official F1Soft product and it does not connect to private banking systems. Every institution, merchant, and transaction is fictional.</p>
+          <p>This FinOpsX demo uses synthetic data and does not connect to private banking systems. Every institution, merchant, and transaction is fictional.</p>
           <p className="font-medium">Monitor. Investigate. Understand.</p>
         </div>
       </section>

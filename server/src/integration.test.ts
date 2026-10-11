@@ -2,17 +2,18 @@ import request from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { app } from './app.js'
 import { prisma } from './lib/prisma.js'
+import { env } from './config/env.js'
 
 /**
  * Integration and security tests against the real Express app and database.
  * They need a migrated, seeded database (CI seeds one); without it every test is skipped rather than failing.
  */
 const ACCOUNTS = {
-  admin: ['admin@finopsx.demo', 'Admin@12345'],
-  ops: ['operations@finopsx.demo', 'Operations@12345'],
-  analyst: ['analyst@finopsx.demo', 'Analyst@12345'],
-  engineer: ['engineer@finopsx.demo', 'Engineer@12345'],
-  auditor: ['auditor@finopsx.demo', 'Auditor@12345'],
+  admin: [env.demoAccounts[0].email, env.demoAccounts[0].password],
+  ops: [env.demoAccounts[1].email, env.demoAccounts[1].password],
+  analyst: [env.demoAccounts[2].email, env.demoAccounts[2].password],
+  engineer: [env.demoAccounts[3].email, env.demoAccounts[3].password],
+  auditor: [env.demoAccounts[4].email, env.demoAccounts[4].password],
 } as const
 type Account = keyof typeof ACCOUNTS
 

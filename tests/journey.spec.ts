@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { env } from '../server/src/config/env.js'
 
 test('login through AI failure-rate answer', async ({ page }) => {
   await page.goto('/login')
-  await page.getByLabel('Email').fill('admin@finopsx.demo')
-  await page.getByLabel('Password').fill('Admin@12345')
+  await page.getByLabel('Email').fill(env.demoAccounts[0].email)
+  await page.getByLabel('Password').fill(env.demoAccounts[0].password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('heading', { name: 'Operations dashboard' })).toBeVisible()
   await page.getByRole('link', { name: 'Transactions' }).click()

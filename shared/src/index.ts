@@ -255,7 +255,7 @@ export const SCENARIO_LABEL: Record<Scenario, string> = {
 export const DEMO_LABELS = {
   environment: 'FinOpsX — Demo Environment',
   synthetic: 'Synthetic Data Only',
-  disclaimer: 'Conceptual fintech operations platform. Not affiliated with or endorsed by F1Soft.',
+  disclaimer: 'Conceptual fintech operations platform. All data shown is synthetic.',
 } as const
 
 export interface PublicUser {

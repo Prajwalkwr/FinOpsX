@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
 import bcrypt from 'bcryptjs'
 import { PrismaClient, type FailureReason, type PaymentMethod, type TxStatus } from '@prisma/client'
+import { env } from '../server/src/config/env.js'
 
 dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env') })
 
@@ -92,14 +93,6 @@ export const API_ENDPOINTS = [
   ['POST', '/notify', 'notification-service', 'Notification API'],
 ] as const
 
-const USERS = [
-  ['Asha Shrestha', 'admin@finopsx.demo', 'Admin@12345', 'SUPER_ADMIN'],
-  ['Rajan Thapa', 'operations@finopsx.demo', 'Operations@12345', 'OPERATIONS_MANAGER'],
-  ['Maya Gurung', 'analyst@finopsx.demo', 'Analyst@12345', 'ANALYST'],
-  ['Nabin KC', 'engineer@finopsx.demo', 'Engineer@12345', 'ENGINEER'],
-  ['Sita Poudel', 'auditor@finopsx.demo', 'Auditor@12345', 'AUDITOR'],
-] as const
-
 const METHODS: Array<{ item: PaymentMethod; weight: number }> = [
   { item: 'QR', weight: 40 },
   { item: 'WALLET', weight: 25 },
@@ -154,7 +147,7 @@ export async function seed() {
   ])
   const roleId = Object.fromEntries(roles.map((role) => [role.name, role.id]))
   const users = []
-  for (const [name, email, password, role] of USERS) {
+  for (const { name, email, password, role } of env.demoAccounts) {
     users.push(await prisma.user.create({
       data: { name, email, passwordHash: await bcrypt.hash(password, 10), roleId: roleId[role], lastLoginAt: new Date(Date.now() - 3600_000) },
     }))

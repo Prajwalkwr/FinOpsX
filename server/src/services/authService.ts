@@ -9,13 +9,7 @@ import { env } from '../config/env.js'
 import { writeAudit } from './audit.js'
 import { sendEmail } from './email.js'
 
-const DEMO_ACCOUNTS = [
-  { role: 'SUPER_ADMIN' as const, name: 'Asha Shrestha', email: 'admin@finopsx.demo', password: 'Admin@12345' },
-  { role: 'OPERATIONS_MANAGER' as const, name: 'Rajan Thapa', email: 'operations@finopsx.demo', password: 'Operations@12345' },
-  { role: 'ANALYST' as const, name: 'Maya Gurung', email: 'analyst@finopsx.demo', password: 'Analyst@12345' },
-  { role: 'ENGINEER' as const, name: 'Nabin KC', email: 'engineer@finopsx.demo', password: 'Engineer@12345' },
-  { role: 'AUDITOR' as const, name: 'Sita Poudel', email: 'auditor@finopsx.demo', password: 'Auditor@12345' },
-]
+const DEMO_ACCOUNTS = env.demoAccounts
 
 function sha256(value: string) {
   return crypto.createHash('sha256').update(value).digest('hex')

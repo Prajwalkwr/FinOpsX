@@ -29,7 +29,7 @@ describe('shared formatting and access', () => {
   it('carries the required demo disclaimers', () => {
     expect(DEMO_LABELS.environment).toBe('FinOpsX — Demo Environment')
     expect(DEMO_LABELS.synthetic).toBe('Synthetic Data Only')
-    expect(DEMO_LABELS.disclaimer).toContain('Not affiliated with or endorsed by F1Soft')
+    expect(DEMO_LABELS.disclaimer).toContain('All data shown is synthetic')
   })
 })
 

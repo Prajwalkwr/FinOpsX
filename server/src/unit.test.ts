@@ -51,7 +51,7 @@ describe('pdf export', () => {
     expect(text.startsWith('%PDF')).toBe(true)
     expect(text).toContain('Daily Operations Report')
     expect(text).toContain('Total transactions: 1200')
-    expect(text).toContain('Not affiliated with or endorsed by F1Soft')
+    expect(text).toContain('FinOpsX - Demo Environment - Synthetic Data Only.')
   })
 
   it('maps non-ASCII characters and wraps long lines', () => {

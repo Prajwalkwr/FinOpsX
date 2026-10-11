@@ -6,9 +6,9 @@ AI-powered financial operations and intelligence platform.
 
 **Live demo:** [finopsx.vercel.app](https://finopsx.vercel.app)
 
-**FinOpsX — Demo Environment · Synthetic Data Only.** Conceptual fintech operations platform. Not affiliated with or endorsed by F1Soft.
+**FinOpsX — Demo Environment · Synthetic Data Only.** Conceptual fintech operations platform.
 
-FinOpsX is not an F1Soft product or internal system, it does not use real customer data, real bank or payment credentials, and it does not connect to private banking systems. Every institution (Demo Bank A/B/C, Demo Wallet, Demo Payment Network, Demo Merchant Network), merchant, transaction, and metric in the app is synthetic.
+FinOpsX is a standalone demo console. It does not use real customer data, real bank or payment credentials, or connect to private banking systems. Every institution (Demo Bank A/B/C, Demo Wallet, Demo Payment Network, Demo Merchant Network), merchant, transaction, and metric in the app is synthetic.
 
 The workflow it demonstrates: **Monitor → Detect → Investigate → Explain → Act → Resolve → Reconcile → Report → Audit.**
 
@@ -136,6 +136,7 @@ See `.env.example`.
 | `SEED_TRANSACTION_COUNT` | Historical synthetic rows |
 | `ALLOW_DEMO_SEED` | Allow seeding when `NODE_ENV=production` (hosted demo only) |
 | `SHOW_DEMO_ACCOUNTS` | List the synthetic accounts on the hosted login page |
+| `DEMO_*_EMAIL`, `DEMO_*_PASSWORD` | Credentials for the seeded demo accounts; set locally in `.env` |
 | `SIMULATOR_AUTOSTART` | Start synthetic traffic on boot (default `true`) |
 | `TRANSACTION_RETENTION_DAYS`, `MAX_TRANSACTIONS` | Prune old synthetic rows |
 
@@ -145,15 +146,7 @@ Never commit `.env`. The client bundle must not contain JWT secrets, database UR
 
 ## Demo accounts
 
-Development only. Do not use these in production.
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Super Admin | admin@finopsx.demo | Admin@12345 |
-| Operations Manager | operations@finopsx.demo | Operations@12345 |
-| Analyst | analyst@finopsx.demo | Analyst@12345 |
-| Engineer | engineer@finopsx.demo | Engineer@12345 |
-| Auditor | auditor@finopsx.demo | Auditor@12345 |
+Demo account emails and passwords are configured with the `DEMO_*` variables in `.env` and used when seeding the database. The example values in `.env.example` are for local development only; set unique credentials for any shared deployment.
 
 The login page lists them only when `NODE_ENV` is not production.
 

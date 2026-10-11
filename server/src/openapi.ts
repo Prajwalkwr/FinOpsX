@@ -108,7 +108,7 @@ export const openApi = {
   info: {
     title: 'FinOpsX API',
     version: '2.0.0',
-    description: 'Conceptual fintech operations API (demo environment). All data is synthetic. Not affiliated with or endorsed by F1Soft.',
+    description: 'FinOpsX conceptual fintech operations API (demo environment). All data is synthetic.',
   },
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },

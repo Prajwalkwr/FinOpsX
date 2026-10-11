@@ -102,7 +102,7 @@ export function AppShell() {
     <div className="min-h-screen bg-canvas p-3 text-ink md:p-4">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[90] focus:rounded-full focus:bg-brand focus:px-4 focus:py-2 focus:text-white">Skip to content</a>
       <div className="mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[1600px] gap-3 md:min-h-[calc(100vh-2rem)]">
-        <aside className="sticky top-4 hidden max-h-[calc(100vh-2rem)] w-[76px] shrink-0 flex-col items-center rounded-[28px] bg-card py-4 shadow-card md:flex">
+        <aside className="sticky top-4 z-40 hidden max-h-[calc(100vh-2rem)] w-[76px] shrink-0 flex-col items-center rounded-[28px] bg-card py-4 shadow-card md:flex">
           <Link to="/dashboard" className="mb-4 grid h-10 w-10 place-items-center text-[15px] font-black tracking-tight" aria-label="FinOpsX overview">FX</Link>
           <nav className="flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto px-2" aria-label="Primary">
             {links.map((link) => {

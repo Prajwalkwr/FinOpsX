@@ -46,7 +46,7 @@ export function wrapLine(line: string, width = 96): string[] {
   return out.map((part, index) => (index === 0 ? part : `${indent}${part}`))
 }
 
-export function buildSimplePdf(title: string, lines: string[], footer = 'FinOpsX - Demo Environment - Synthetic Data Only. Not affiliated with or endorsed by F1Soft.'): Buffer {
+export function buildSimplePdf(title: string, lines: string[], footer = 'FinOpsX - Demo Environment - Synthetic Data Only.'): Buffer {
   const pages: string[][] = []
   const capacity = 48
   const body = ['', ...lines.flatMap((line) => wrapLine(line))]
